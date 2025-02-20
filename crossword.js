@@ -112,4 +112,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    // Add event listeners to clues
+    document.querySelectorAll('#clues li').forEach(clue => {
+        clue.addEventListener('click', () => {
+            const number = clue.getAttribute('data-number');
+            console.log("picking clue: " + number);
+            // get all the elements of class number
+            const inputs = document.querySelectorAll('.number');
+            // find the element with the same data-number
+            const gridNumber = Array.from(inputs).find(gridNumber => gridNumber.getAttribute('data-number') === number);
+            if (gridNumber) {
+                console.log("focusing on: " + gridNumber.id);
+                // find the input sibling of the grid number
+                const input = gridNumber.nextElementSibling;
+                if (input) {
+                    input.focus();
+                }
+            }
+        });
+    });
 });

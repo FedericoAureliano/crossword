@@ -189,8 +189,8 @@ def solve(constraints):
     # Solve via quantifier-free finite domain solver
     s = SolverFor('QF_FD')
     s.add(constraints)
-    # set a timeout of 5 minutes
-    s.set("timeout", 300000)
+    # set a timeout of 10 minutes
+    s.set("timeout", 600000)
     return s.model() if s.check() == sat else None
 
 
@@ -274,7 +274,7 @@ def printCrossword(words_to_clues, placement, size):
                         letter = word[y - p.y]
                     if x == p.x and y == p.y:
                         counter = wordToNumber(word, placement)
-                        number = f"<div class=\"number\">{counter}</div>"
+                        number = f"<div data-number=\"{counter}\" class=\"number\">{counter}</div>"
                 if letter == " ":
                     f.write("<td class=\"black\"></td>")
                 else:
@@ -293,12 +293,14 @@ def printCrossword(words_to_clues, placement, size):
         f.write("<h2>Across</h2>\n")
         f.write("<ul>\n")
         for word in horizontal_words:
-            f.write(f"<li>{wordToNumber(word, placement)}. {words_to_clues[word]}</li>\n")
+            num = wordToNumber(word, placement)
+            f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")
         f.write("</ul>\n")
         f.write("<h2>Down</h2>\n")
         f.write("<ul>\n")
         for word in vertical_words:
-            f.write(f"<li>{wordToNumber(word, placement)}. {words_to_clues[word]}</li>\n")
+            num = wordToNumber(word, placement)
+            f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")
         f.write("</ul>\n")
         f.write("</div>\n")
 
@@ -319,7 +321,7 @@ if __name__ == '__main__':
     words = list(set(words_to_clues.keys()))
     size = max(len(w) for w in words) + 2
 
-    minimum = 50
+    minimum = 70
     maximum = 200
     mid = (minimum + maximum) // 2
 
