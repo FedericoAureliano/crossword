@@ -189,8 +189,8 @@ def solve(constraints):
     # Solve via quantifier-free finite domain solver
     s = SolverFor('QF_FD')
     s.add(constraints)
-    # set a timeout of 120 seconds
-    s.set("timeout", 120000)
+    # set a timeout of 5 minutes
+    s.set("timeout", 300000)
     return s.model() if s.check() == sat else None
 
 
