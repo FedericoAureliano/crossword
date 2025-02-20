@@ -317,7 +317,7 @@ if __name__ == '__main__':
             words_to_clues[word.strip().lower()] = clue.strip()
 
     words = list(set(words_to_clues.keys()))
-    size = max(len(w) for w in words)
+    size = max(len(w) for w in words) + 2
 
     minimum = 50
     maximum = 200

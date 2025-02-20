@@ -12,8 +12,8 @@ body {
     font-family: 'IBM Plex Sans', sans-serif;
     max-width: 500px;
     margin: 0 auto;
-    padding-bottom: 5em;
-    padding-top: 5em;
+    padding-bottom: 1em;
+    padding-top: 2em;
     font-size: 14pt;
 }
 
@@ -72,9 +72,7 @@ body {
 
 #clues {
     margin: auto;
-    padding-left: 2em;
-    padding-right: 2em;
-    padding-top: 2em;
+    padding: 1em;
 }
 
 #clues ul {
@@ -98,6 +96,7 @@ h2 {
 
 h1 {
     text-align: center;
-    outline: 2px solid var(--selected);
+    text-decoration: underline;
+    text-decoration-color: var(--selected);
     font-size: 24pt;
 }
