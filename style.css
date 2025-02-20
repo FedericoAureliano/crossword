@@ -100,3 +100,15 @@ h1 {
     text-decoration-color: var(--selected);
     font-size: 24pt;
 }
+
+@media (max-width: 500px) {
+    #grid td, #grid td input {
+        width: 1.5em;
+        height: 1.5em;
+        font-size: 12pt;
+    }
+
+    #grid .number {
+        font-size: 6pt;
+    }
+}
