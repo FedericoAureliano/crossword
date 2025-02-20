@@ -83,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nextInput = getNextInput(input);
                 if (nextInput !== input) {
                     nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
                 }
             } else if (input.value.length === 0 && event.inputType === 'deleteContentBackward') {
                 const prevInput = getPrevInput(input);
@@ -106,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nextInput = getNextInput(input);
                 if (nextInput !== input) {
                     nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
                 }
             }
         });
