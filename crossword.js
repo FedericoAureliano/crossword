@@ -21,12 +21,12 @@ function checkInputs() {
             const oldDisplay = grid.style.display;
             grid.style.display = 'none';
             const correct = document.createElement('h1');
-            correct.textContent = 'Success! You did it.';
+            correct.textContent = 'You won! Congratulations!';
             document.body.prepend(correct);
             setTimeout(() => {
                 grid.style.display = oldDisplay;
                 correct.remove();
-            }, 5000);
+            }, 2000);
             
         } else {
             // Not all correct, hide the grid, show an error message, and return it after 10 seconds
@@ -38,40 +38,52 @@ function checkInputs() {
             setTimeout(() => {
                 grid.style.display = oldDisplay;
                 error.remove();
-            }, 5000);
+            }, 2000);
         }
     }
 }
+
+let lastDirection = 'right'; // Track the last direction moved
 
 // helper function to determine the next input to focus on based on the id, which is x_y
 function getNextInput(current) {
     const id = current.id;
     const [x, y] = id.split('_').map(Number);
-    // the next one could be on the right or below
-    const right = document.getElementById(`${x + 1}_${y}`);
-    if (right) {
-        return right;
+    let nextInput;
+    if (lastDirection === 'right') {
+        nextInput = document.getElementById(`${x + 1}_${y}`);
+        if (!nextInput) {
+            nextInput = document.getElementById(`${x}_${y + 1}`);
+            lastDirection = 'down';
+        }
+    } else {
+        nextInput = document.getElementById(`${x}_${y + 1}`);
+        if (!nextInput) {
+            nextInput = document.getElementById(`${x + 1}_${y}`);
+            lastDirection = 'right';
+        }
     }
-    const below = document.getElementById(`${x}_${y + 1}`);
-    if (below) {
-        return below;
-    }
-    return current;
+    return nextInput || current;
 }
 
 function getPrevInput(current) {
     const id = current.id;
     const [x, y] = id.split('_').map(Number);
-    // the previous one could be on the left or above
-    const left = document.getElementById(`${x - 1}_${y}`);
-    if (left) {
-        return left;
+    let prevInput;
+    if (lastDirection === 'left') {
+        prevInput = document.getElementById(`${x - 1}_${y}`);
+        if (!prevInput) {
+            prevInput = document.getElementById(`${x}_${y - 1}`);
+            lastDirection = 'up';
+        }
+    } else {
+        prevInput = document.getElementById(`${x}_${y - 1}`);
+        if (!prevInput) {
+            prevInput = document.getElementById(`${x - 1}_${y}`);
+            lastDirection = 'left';
+        }
     }
-    const above = document.getElementById(`${x}_${y - 1}`);
-    if (above) {
-        return above;
-    }
-    return current;
+    return prevInput || current;
 }
 
 // Add event listeners to all inputs
@@ -111,6 +123,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+
+        // Add event listener to highlight all text on click
+        input.addEventListener('click', () => {
+            input.setSelectionRange(0, input.value.length);
+        });
     });
 
     // Add event listeners to clues
@@ -128,7 +145,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const input = gridNumber.nextElementSibling;
                 if (input) {
                     input.focus();
+                    input.setSelectionRange(0, input.value.length);
                 }
+            }
+            // set the direction to right if we are in the across clues
+            if (clue.parentElement.id === 'across') {
+                lastDirection = 'right';
+            } else {
+                lastDirection = 'down';
             }
         });
     });

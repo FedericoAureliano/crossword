@@ -189,8 +189,8 @@ def solve(constraints):
     # Solve via quantifier-free finite domain solver
     s = SolverFor('QF_FD')
     s.add(constraints)
-    # set a timeout of 10 minutes
-    s.set("timeout", 600000)
+    # set a timeout of 30 minutes
+    s.set("timeout", 1800000)
     return s.model() if s.check() == sat else None
 
 
@@ -291,13 +291,13 @@ def printCrossword(words_to_clues, placement, size):
         # write the clues as a list
         f.write("<div id=\"clues\">\n")
         f.write("<h2>Across</h2>\n")
-        f.write("<ul>\n")
+        f.write("<ul id=\"across\">\n")
         for word in horizontal_words:
             num = wordToNumber(word, placement)
             f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")
         f.write("</ul>\n")
         f.write("<h2>Down</h2>\n")
-        f.write("<ul>\n")
+        f.write("<ul id=\"down\">\n")
         for word in vertical_words:
             num = wordToNumber(word, placement)
             f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")

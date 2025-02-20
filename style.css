@@ -112,3 +112,32 @@ h1 {
         font-size: 6pt;
     }
 }
+
+@media print {
+    #grid td, #grid td input {
+        width: 1.5em;
+        height: 1.5em;
+        font-size: 12pt;
+    }
+
+    #grid .number {
+        font-size: 6pt;
+    }
+
+    #clues {
+        font-size: 8pt;
+    }
+
+    #clues h2 {
+        margin-top: 3em;
+    }
+
+    #clues ul {
+        column-count: 2;
+        column-gap: 3em;
+    }
+    /* don't break li's  over columns */
+    #clues ul li {
+        break-inside: avoid;
+    }
+}
