@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;700&family=IBM+Plex+Sans+Mono:wght@400;700&display=swap');
+
+:root {
+    --outline: #404040;
+    --empty: #ffffff;
+    --blocked: #000000;
+    --selected: #F04646;
+
+}
+
+body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    max-width: 500px;
+    margin: 0 auto;
+    padding-bottom: 5em;
+    padding-top: 5em;
+    font-size: 14pt;
+}
+
+#grid {
+    border-collapse: collapse;
+    margin: auto;
+    table-layout: fixed;
+    outline: 2px solid var(--blocked);
+    outline-offset: -2px;
+}
+
+#grid td {
+    width: 1.75em;
+    height: 1.75em;
+    border: 2px solid var(--outline);
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
+    font-family: 'IBM Plex Sans Mono', monospace;
+}
+
+#grid td input {
+    width: 1.75em;
+    height: 1.75em;
+    border: none;
+    text-align: center;
+    vertical-align: middle;
+    font-weight: bold;
+    font-family: 'IBM Plex Sans Mono', monospace;
+    font-size: 14pt;
+    background-color: transparent;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+#grid td input:focus {
+    background-color: var(--selected); 
+}
+
+#grid td.black {
+    background-color: var(--blocked);
+}
+
+#grid td.todo {
+    background-color: var(--empty);
+}
+
+#grid .number {
+    position: absolute;
+    margin-left: 0pt;
+    margin-top: 0pt;
+    font-size: 8pt;
+}
+
+#clues {
+    margin: auto;
+    padding-left: 2em;
+    padding-right: 2em;
+    padding-top: 2em;
+}
+
+#clues ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+#clues ul li {
+    margin-bottom: 0.5em;
+}
+
+h2 {
+    text-align: left;
+    margin: 0;
+    margin-bottom: 0.5em;
+    margin-top: 1em;
+    text-decoration: underline;
+    text-decoration-color: var(--selected);
+}
+
+h1 {
+    text-align: center;
+    outline: 2px solid var(--selected);
+    font-size: 24pt;
+}
