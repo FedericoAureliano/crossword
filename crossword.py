@@ -13,7 +13,7 @@ from z3 import *  # Provided by `pip install z3-solver==`4.11.2.0`
 def print_time(msg):
     def decorator(f):
         def wrapper(*args, **kwargs):
-            print(f'{msg} ... ', end='')
+            print(f'{msg} ... ', end='', flush=True)
             start = timer()
             res = f(*args, **kwargs)
             print('{:.2f}s'.format(timer() - start))
@@ -27,26 +27,52 @@ def print_time(msg):
 Placement = namedtuple('Placement', ['x', 'y', 'horizontal'])
 
 
-def generateCrossword(words, size, minQuality):
-    # Input validation
-    assert minQuality >= 0
+def generateCrossword(words_to_clues, size):
+    words = list(words_to_clues.keys())
+
+    s = Solver()
+    # set a timeout of 10 minute
+    s.set("timeout", 600000)
+    # set the pb.solver to totalizer
+    s.set("pb.solver", "totalizer")
 
     # Encode valid word placements (over some set of placement variables)
-    constraints, placement_vars = encodeProblem(words, size, minQuality)
+    empty_char, placement_vars, grid, base_constraints = encodeProblem(words, size)
 
-    # Solve SMT instance & pretty-print result (if one exists)
-    model = solve(constraints)
-    if model:
-        placement = interpret(model, placement_vars)
-        print("Constraints satisfiable")
-        return placement
-    else:
-        print("Constraints unsatisfiable")
-        return None
+    s.add(base_constraints)
+
+    placement = None
+
+    lower = 0
+    upper = size * size
+    mid = (lower + upper) // 2
+
+    while lower < upper:
+        s.push()
+        s.add(PbLe([(var == empty_char, 1) for row in grid for var in row], mid))
+        print(f"Solving with at most {mid} blanks ...", end=' ', flush=True)
+        time_before = timer()
+        model = s.model() if s.check() == sat else None
+        print(f"{timer() - time_before:.2f}s")
+        if model:
+            placement = interpret(model, placement_vars)
+            print("  - succeeded!")
+            printCrossword(words_to_clues, placement, size)
+            upper = mid
+            mid = (lower + upper) // 2
+        else:
+            print("  - failed.")
+            lower = mid + 1
+            mid = (lower + upper) // 2
+            # only pop on failures. If we succeed, we want to tighten the bound
+            s.pop()
+            # TODO: but maybe add the negation of the PBLE constraint? 
+
+    return placement
 
 
 @print_time("Encoding")
-def encodeProblem(words, size, minQuality):
+def encodeProblem(words, size):
     # Variables encoding the placement of each word, i.e. setting
     # `placement_vars['doom'][0][3][1]` to `True` denotes
     # 'doom' being placed vertically at (x=3, y=0)
@@ -61,7 +87,7 @@ def encodeProblem(words, size, minQuality):
 
     # Constants representing the words' characters (and "no character")
     chars = list(set("".join(words)))
-    char_sort, char_constants = EnumSort(f'Chars{minQuality}', chars + ['empty'])
+    char_sort, char_constants = EnumSort(f'Chars', chars + ['empty'])
     char_empty = char_constants[-1]
     chars_enc = {c: sym for c, sym in zip(chars, char_constants)}
 
@@ -141,57 +167,12 @@ def encodeProblem(words, size, minQuality):
                             grid[y + 1][x] != char_empty)
             res.append(seq_start == Or(possible_placements[y][x][1]))
 
-    # Require grid symbols to form a single connected component (CC)
-    ccStartRow = [Bool(f'ccStart_{y}') for y in range(size)]
-    ccStart = [[Bool(f'ccStart_{x},{y}') for x in range(size)]
-               for y in range(size)]
-    inCc = [[[Bool(f'reach{i}_{x},{y}') for i in range(maxDistance(size) + 1)]
-             for x in range(size)] for y in range(size)]
+    # Add constraints on the rotational symmetry of the grid. The grid is symmetric if the empty cells are symmetric
     for y in range(size):
-        # CC starts in row y
-        notInPrevRows = And([Not(ccStartRow[i]) for i in range(y)])
-        inCurRow = Or([grid[y][x] != char_empty for x in range(size)])
-        res.append(And(inCurRow, notInPrevRows) == ccStartRow[y])
-
         for x in range(size):
-            # CC starts at x,y
-            notInPrevPos = And([Not(ccStart[y][i]) for i in range(x)])
-            inCurPos = grid[y][x] != char_empty
-            res.append(And(ccStartRow[y], inCurPos, notInPrevPos) == ccStart[y][x])
+            res.append((grid[y][x] == char_empty) == (grid[size - 1 - y][size - 1 - x] == char_empty))
 
-            # Only CC start position reaches itself in 0 steps
-            res.append(ccStart[y][x] == inCc[y][x][0])
-
-            # Symbol at x,y reaches CC start in `i` steps if
-            # - it already reaches it in `i-1` steps, or
-            # - neighbour symbol reaches it in `i-1` steps
-            for i in range(1, maxDistance(size) + 1):
-                reasons = [inCc[y][x][i - 1]]
-                if x - 1 >= 0: reasons.append(inCc[y][x - 1][i - 1])
-                if x + 1 < size: reasons.append(inCc[y][x + 1][i - 1])
-                if y - 1 >= 0: reasons.append(inCc[y - 1][x][i - 1])
-                if y + 1 < size: reasons.append(inCc[y + 1][x][i - 1])
-                res.append(Implies(inCc[y][x][i],
-                                   And(grid[y][x] != char_empty, Or(reasons))))
-
-            # All non-empty grid entries must reach the CC start
-            res.append(Implies(grid[y][x] != char_empty, inCc[y][x][maxDistance(size)]))
-
-    # Require the solution to satisfy some quality criterion
-    # Here: Quality corresponds to the sum of the selected words' lengths
-    res.append(PbGe([(var, len(w)) for w, var in word_selection.items()], minQuality))
-
-    return res, placement_vars
-
-
-@print_time("Solving")
-def solve(constraints):
-    # Solve via quantifier-free finite domain solver
-    s = SolverFor('QF_FD')
-    s.add(constraints)
-    # set a timeout of 30 minutes
-    s.set("timeout", 1800000)
-    return s.model() if s.check() == sat else None
+    return char_empty, placement_vars, grid, res
 
 
 def interpret(model, placement_vars):
@@ -205,35 +186,6 @@ def interpret(model, placement_vars):
                     placement[word] = Placement(x, y, False)
 
     return placement
-
-
-def printPlacement(placement, size):
-    # Pretty print placement details
-    placed_symbols = sum([len(w) for w in placement.keys()])
-    print(f'Placed {len(placement)} words ({placed_symbols} symbols):')
-    for i, word in enumerate(placement):
-        print('{:2d}) {} {}'.format(i + 1, word, placement[word]))
-
-    # Fill explicit grid with characters from interpretation (rest are spaces)
-    grid = [[' ' for x in range(size)] for y in range(size)]
-    for word, placement in placement.items():
-        for i, c in enumerate(word):
-            x = placement.x + i if placement.horizontal else placement.x
-            y = placement.y if placement.horizontal else placement.y + i
-            grid[y][x] = c
-
-    # Pretty print grid
-    print('┌' + '┬'.join('─' * size) + '┐')
-    for y, row in enumerate(grid):
-        if y != 0 and y != len(grid):
-            print('├' + '┼'.join('─' * size) + '┤')
-        print('│' + '│'.join(row) + '│')
-    print('└' + '┴'.join('─' * size) + '┘')
-
-
-# Max distance between placed characters (if they form a component)
-def maxDistance(size):
-    return (size + 1) ** 2 // 2 - 1  # Tighter bound than size**2
 
 
 def wordToNumber(word, placements):
@@ -308,7 +260,6 @@ def printCrossword(words_to_clues, placement, size):
 
 
 if __name__ == '__main__':
-
     # load current.csv file into words_to_clues
     words_to_clues = {}
     with open("current.csv", "r") as f:
@@ -319,26 +270,8 @@ if __name__ == '__main__':
             words_to_clues[word.strip().lower()] = clue.strip()
 
     words = list(set(words_to_clues.keys()))
-    size = max(len(w) for w in words) + 2
+    size = max(max(len(w) for w in words), 10)
 
-    minimum = 70
-    maximum = 200
-    mid = (minimum + maximum) // 2
+    placement = generateCrossword(words_to_clues, size)
 
-    placement = None
-
-    while minimum < maximum:
-        print(f"Trying quality {mid}")
-        quality = mid
-        tmp_placement = generateCrossword(words, size, quality)
-        if tmp_placement:
-            placement = tmp_placement
-            minimum = mid + 1
-        else:
-            maximum = mid - 1
-        mid = (minimum + maximum) // 2
-        print()
-
-    print(f"\nFinal quality: {mid}")
-    printPlacement(placement, size)
     printCrossword(words_to_clues, placement, size)

@@ -5,6 +5,8 @@
     --empty: #ffffff;
     --blocked: #000000;
     --selected: #F04646;
+    --next: #f0464653;
+    --next-next: #f0464625;
 
 }
 
@@ -99,6 +101,14 @@ h1 {
     text-decoration: underline;
     text-decoration-color: var(--selected);
     font-size: 24pt;
+}
+
+#grid input.next {
+    background-color: var(--next);
+}
+
+#grid input.nextnext {
+    background-color: var(--next-next);
 }
 
 @media (max-width: 500px) {

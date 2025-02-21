@@ -11,7 +11,6 @@ function checkInputs() {
         let allCorrect = true;
         inputs.forEach(input => {
             if (input.value.trim().toUpperCase() !== input.name.trim().toUpperCase()) {
-                console.log("Incorrect: " + input.value.trim().toUpperCase() + " !== " + input.name.trim().toUpperCase());
                 allCorrect = false;
             }
         });
@@ -43,24 +42,22 @@ function checkInputs() {
     }
 }
 
-let lastDirection = 'right'; // Track the last direction moved
+let lastDirection = 'horizontal'; // Track the last direction moved
 
 // helper function to determine the next input to focus on based on the id, which is x_y
 function getNextInput(current) {
     const id = current.id;
     const [x, y] = id.split('_').map(Number);
     let nextInput;
-    if (lastDirection === 'right') {
+    if (lastDirection === 'horizontal') {
         nextInput = document.getElementById(`${x + 1}_${y}`);
         if (!nextInput) {
             nextInput = document.getElementById(`${x}_${y + 1}`);
-            lastDirection = 'down';
         }
     } else {
         nextInput = document.getElementById(`${x}_${y + 1}`);
         if (!nextInput) {
             nextInput = document.getElementById(`${x + 1}_${y}`);
-            lastDirection = 'right';
         }
     }
     return nextInput || current;
@@ -70,25 +67,68 @@ function getPrevInput(current) {
     const id = current.id;
     const [x, y] = id.split('_').map(Number);
     let prevInput;
-    if (lastDirection === 'left') {
+    if (lastDirection === 'horizontal') {
         prevInput = document.getElementById(`${x - 1}_${y}`);
         if (!prevInput) {
             prevInput = document.getElementById(`${x}_${y - 1}`);
-            lastDirection = 'up';
         }
     } else {
         prevInput = document.getElementById(`${x}_${y - 1}`);
         if (!prevInput) {
             prevInput = document.getElementById(`${x - 1}_${y}`);
-            lastDirection = 'left';
         }
     }
     return prevInput || current;
 }
 
+function getNextNextInput(current) {
+    const nextInput = getNextInput(current);
+    return getNextInput(nextInput);
+}
+
+function shadeNextGrid(current) {
+    const nextInput = getNextInput(current);
+    if (nextInput !== current) {
+        nextInput.classList.add('next');
+    }
+}
+
+function shadeNextNextGrid(current) {
+    const nextNextInput = getNextNextInput(current);
+    if (nextNextInput !== current) {
+        nextNextInput.classList.add('nextnext');
+    }
+}
+
+function unshadeGrid() {
+    document.querySelectorAll('input.next, input.nextnext').forEach(input => {
+        input.classList.remove('next', 'nextnext');
+    });
+}
+
+function updateDirection(prev, next) {
+    const [x1, y1] = prev.id.split('_').map(Number);
+    const [x2, y2] = next.id.split('_').map(Number);
+    if (x1 !== x2) {
+        lastDirection = 'horizontal';
+    } else {
+        lastDirection = 'vertical';
+    }
+}
+
 // Add event listeners to all inputs
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('input').forEach((input) => {
+        input.addEventListener('focus', () => {
+            unshadeGrid();
+            shadeNextGrid(input);
+            shadeNextNextGrid(input);
+        });
+
+        input.addEventListener('blur', () => {
+            unshadeGrid();
+        });
+
         input.addEventListener('input', (event) => {
             checkInputs();
             if (input.value.length === 1) {
@@ -96,6 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (nextInput !== input) {
                     nextInput.focus();
                     nextInput.setSelectionRange(0, nextInput.value.length);
+                    // set the direction to horizontal if we moved horizontally
+                    updateDirection(input, nextInput);
                 }
             } else if (input.value.length === 0 && event.inputType === 'deleteContentBackward') {
                 const prevInput = getPrevInput(input);
@@ -103,6 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     prevInput.focus();
                     // make the cursor go to the end of the input
                     prevInput.setSelectionRange(prevInput.value.length, prevInput.value.length);
+                    // set the direction to horizontal if we moved horizontally
+                    updateDirection(prevInput, input);
                 }
             }
         });
@@ -114,12 +158,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     prevInput.focus();
                     // make the cursor go to the end of the input
                     prevInput.setSelectionRange(prevInput.value.length, prevInput.value.length);
+                    // set the direction to horizontal if we moved horizontally
+                    updateDirection(prevInput, input);
                 }
             } else if (event.key === 'Enter') {
                 const nextInput = getNextInput(input);
                 if (nextInput !== input) {
                     nextInput.focus();
                     nextInput.setSelectionRange(0, nextInput.value.length);
+                    // set the direction to horizontal if we moved horizontally
+                    updateDirection(input, nextInput);
                 }
             }
         });
@@ -128,19 +176,27 @@ document.addEventListener('DOMContentLoaded', () => {
         input.addEventListener('click', () => {
             input.setSelectionRange(0, input.value.length);
         });
+
+        // Add event listener for double-click to change direction
+        input.addEventListener('dblclick', () => {
+            const old_direction = lastDirection
+            lastDirection = lastDirection === 'horizontal' ? 'vertical' : 'horizontal';
+            // update the highlights for the next and nextnext cells
+            unshadeGrid();
+            shadeNextGrid(input);
+            shadeNextNextGrid(input);
+        });
     });
 
     // Add event listeners to clues
     document.querySelectorAll('#clues li').forEach(clue => {
         clue.addEventListener('click', () => {
             const number = clue.getAttribute('data-number');
-            console.log("picking clue: " + number);
             // get all the elements of class number
             const inputs = document.querySelectorAll('.number');
             // find the element with the same data-number
             const gridNumber = Array.from(inputs).find(gridNumber => gridNumber.getAttribute('data-number') === number);
             if (gridNumber) {
-                console.log("focusing on: " + gridNumber.id);
                 // find the input sibling of the grid number
                 const input = gridNumber.nextElementSibling;
                 if (input) {
@@ -150,9 +206,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // set the direction to right if we are in the across clues
             if (clue.parentElement.id === 'across') {
-                lastDirection = 'right';
+                lastDirection = 'horizontal';
             } else {
-                lastDirection = 'down';
+                lastDirection = 'vertical';
             }
         });
     });
