@@ -170,6 +170,47 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateDirection(input, nextInput);
                 }
             }
+            // arrow keys to navigate the grid
+            if (event.key === 'ArrowUp') {
+                const id = input.id;
+                const [x, y] = id.split('_').map(Number);
+                let nextInput = document.getElementById(`${x}_${y - 1}`);
+                if (nextInput) {
+                    nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
+                    updateDirection(input, nextInput);
+                }
+            }
+            if (event.key === 'ArrowDown') {
+                const id = input.id;
+                const [x, y] = id.split('_').map(Number);
+                let nextInput = document.getElementById(`${x}_${y + 1}`);
+                if (nextInput) {
+                    nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
+                    updateDirection(input, nextInput);
+                }
+            }
+            if (event.key === 'ArrowLeft') {
+                const id = input.id;
+                const [x, y] = id.split('_').map(Number);
+                let nextInput = document.getElementById(`${x - 1}_${y}`);
+                if (nextInput) {
+                    nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
+                    updateDirection(input, nextInput);
+                }
+            }
+            if (event.key === 'ArrowRight') {
+                const id = input.id;
+                const [x, y] = id.split('_').map(Number);
+                let nextInput = document.getElementById(`${x + 1}_${y}`);
+                if (nextInput) {
+                    nextInput.focus();
+                    nextInput.setSelectionRange(0, nextInput.value.length);
+                    updateDirection(input, nextInput);
+                }
+            }
         });
 
         // Add event listener to highlight all text on click
