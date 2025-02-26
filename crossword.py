@@ -1,13 +1,34 @@
-# Code adapted from https://bohlender.pro/blog/generating-crosswords-with-sat-smt/
-# All credit goes to the original author. I have made some modifications to the code to fit my needs.
+# Code started with https://bohlender.pro/blog/generating-crosswords-with-sat-smt/ but has changed a lot since then
 
+import os
+import z3
+import csv
+import json
+import typer
+import random
 
-from collections import namedtuple
-from itertools import *
+from yattag import Doc
+from itertools import combinations
 from timeit import default_timer as timer
 
-from z3 import *  # Provided by `pip install z3-solver==`4.11.2.0`
+from pydantic import BaseModel
+from openai import OpenAI
 
+# Input is a text desciprtion of the theme, output is a dictionary of words and clues
+if os.environ["OPENAI_API_KEY"]:
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+else:
+    raise ValueError("No OPENAI_API_KEY")
+
+class Clue(BaseModel):
+    clue: str
+
+class WordAndClue(BaseModel):
+    word: str
+    clue: str
+
+class Theme(BaseModel):
+    words: list[WordAndClue]
 
 # Decorator for tracking progress and runtime
 def print_time(msg):
@@ -18,260 +39,542 @@ def print_time(msg):
             res = f(*args, **kwargs)
             print('{:.2f}s'.format(timer() - start))
             return res
-
         return wrapper
-
     return decorator
 
+def cache_call(filename):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            with open(filename, "r+") as f:
+                cache = csv.reader(f, delimiter=";")
+                # find the row with the inputs
+                for row in cache:
+                    if list(map(str, row[:-1])) == list(map(str, args)):
+                        print(f"\n\nCache hit!!\n\n")
+                        f.close()
+                        return eval(row[-1])
+                res = func(*args, **kwargs)
+                cache = csv.writer(f, delimiter=";")
+                cache.writerow(list(args) + [res])
+            return res
+        return wrapper
+    return decorator
 
-Placement = namedtuple('Placement', ['x', 'y', 'horizontal'])
+ACROSS = 0
+DOWN = 1
 
+class Crossword:
+    @print_time("Setup")
+    def __init__(self, words, size):
+        words = [word for word in words if len(word) <= size]
 
-def generateCrossword(words_to_clues, size):
-    words = list(words_to_clues.keys())
+        self.ctx = z3.Context()
 
-    s = Solver()
-    # set a timeout of 10 minute
-    s.set("timeout", 600000)
-    # set the pb.solver to totalizer
-    s.set("pb.solver", "totalizer")
+        # set up the set of characters that can be in the puzzle
+        letters_in_puzzle = set("".join(words))
+        letter, self.letters = z3.EnumSort("letter", list(letters_in_puzzle) + ["BLANK"], self.ctx)
+        self.blank = self.letters[-1]
+        self.letters = {l: self.letters[i] for i, l in enumerate(letters_in_puzzle)}
+        self.letters["BLANK"] = self.blank
 
-    # Encode valid word placements (over some set of placement variables)
-    empty_char, placement_vars, grid, base_constraints = encodeProblem(words, size)
-
-    s.add(base_constraints)
-
-    placement = None
-
-    lower = 0
-    upper = size * size
-    mid = (lower + upper) // 2
-
-    while lower < upper:
-        s.push()
-        s.add(PbLe([(var == empty_char, 1) for row in grid for var in row], mid))
-        print(f"Solving with at most {mid} blanks ...", end=' ', flush=True)
-        time_before = timer()
-        model = s.model() if s.check() == sat else None
-        print(f"{timer() - time_before:.2f}s")
-        if model:
-            placement = interpret(model, placement_vars)
-            print("  - succeeded!")
-            printCrossword(words_to_clues, placement, size)
-            upper = mid
-            mid = (lower + upper) // 2
-        else:
-            print("  - failed.")
-            lower = mid + 1
-            mid = (lower + upper) // 2
-            # only pop on failures. If we succeed, we want to tighten the bound
-            s.pop()
-            # TODO: but maybe add the negation of the PBLE constraint? 
-
-    return placement
-
-
-@print_time("Encoding")
-def encodeProblem(words, size):
-    # Variables encoding the placement of each word, i.e. setting
-    # `placement_vars['doom'][0][3][1]` to `True` denotes
-    # 'doom' being placed vertically at (x=3, y=0)
-    placement_vars = {word: [[[Bool(f'{word}_{x},{y}_{orientation}')
-                               for orientation in ['horizontal', 'vertical']]
-                              for x in range(size)]
-                             for y in range(size)]
+        # set up the set of possible table positions
+        self.size = size
+        self.table = [[z3.Const(f"table_{x}_{y}", letter) for y in range(size)] for x in range(size)]
+        self.off = z3.Const("off", letter)
+              
+        # set up all the variables for the words        
+        self.words = {word: [[[z3.Bool(f'{word}_{x}_{y}_{o}', self.ctx) if self.fits(x, y, o, word) else z3.BoolVal(False, self.ctx)
+                               for o in [ACROSS, DOWN]]
+                              for y in range(size)]
+                             for x in range(size)]
                       for word in words}
 
-    # Variables encoding the subset of words actually put on the grid
-    word_selection = {word: Bool(f'{word}_selected') for word in words}
+        # solution is the model that we will find
+        self.solution = None
+    
+    def fits(self, i, j, orientation, word):
+        if orientation == ACROSS:
+            return j + len(word) <= self.size
+        else:
+            return i + len(word) <= self.size
+        
+    def get(self, i, j):
+        if i < 0 or i >= self.size or j < 0 or j >= self.size:
+            return self.off
+        return self.table[i][j]
 
-    # Constants representing the words' characters (and "no character")
-    chars = list(set("".join(words)))
-    char_sort, char_constants = EnumSort(f'Chars', chars + ['empty'])
-    char_empty = char_constants[-1]
-    chars_enc = {c: sym for c, sym in zip(chars, char_constants)}
+    def right(self, i, j):
+        return self.get(i, j+1) 
+    
+    def left(self, i, j):
+        return self.get(i, j-1) 
+    
+    def down(self, i, j):
+        return self.get(i+1, j)
+    
+    def up(self, i, j):
+        return self.get(i-1, j)
+    
+    def next(self, i, j, orientation, k):
+        """Get the kth next letter in the given orientation"""
+        if orientation == ACROSS:
+            return self.get(i, j+k)
+        else:
+            return self.get(i+k, j)
+        
+    def prev(self, i, j, orientation, k):
+        """Get the kth previous letter in the given orientation"""
+        if orientation == ACROSS:
+            return self.get(i, j-k)
+        else:
+            return self.get(i-k, j)
+    
+    @print_time("Position constraints")
+    def position_constraints(self):
+        """
+        Returns a list of constraints that ensure that if a word is selected, 
+        then the table is filled in correctly at the appropriate position and orientation
+        """
+        constraints = []
+        for word, placements in self.words.items():
+            for i in range(self.size):
+                for j in range(self.size):
+                    for o in [ACROSS, DOWN]:
+                        # if the word is placed at this position and orientation, then the table must be filled in correctly
+                        effect = self.prev(i, j, o, 1) == self.blank
+                        for k, c in enumerate(word):
+                            effect = z3.And(effect, self.next(i, j, o, k) == self.letters[c], self.ctx)
+                        effect = z3.And(effect, self.next(i, j, o, len(word)) == self.blank, self.ctx)
+                        constraints.append(z3.Implies(placements[i][j][o], effect, self.ctx))
 
-    # Variables encoding the character in each grid cell
-    grid = [[Const(f'grid_{x}_{y}', char_sort) for x in range(size)]
-            for y in range(size)]
+            # at-most-one placement is used per word
+            at_most_one = z3.AtMost(*[placements[i][j][o] for i in range(self.size) for j in range(self.size) for o in [ACROSS, DOWN]], 1)
+            constraints.append(at_most_one)
+        
+        return constraints
+    
+    @print_time("Island constraints")
+    def island_constraints(self):
+        """There should be no single character islands"""
+        constraints = []
+        for i in range(self.size):
+            for j in range(self.size):
+                neighbors = [self.left(i, j), self.right(i, j), self.up(i, j), self.down(i, j)]
+                constraints.append(z3.Implies(self.get(i, j) != self.blank, z3.Or(*[n != self.blank for n in neighbors], self.ctx), self.ctx))
+        return constraints
 
-    # `possible_placements[y][x][0]` will contain the placement variables
-    # of all words what can be placed horizontally at coord (x,y)
-    possible_placements = [[[[]
-                             for orientation in ['horizontal', 'vertical']]
-                            for x in range(size)]
-                           for y in range(size)]
+    @print_time("Off table constraints")
+    def off_table_constraints(self):
+        """The table is blank off the table"""
+        return [self.off == self.blank]
+    
+    @print_time("Word start constraints")
+    def word_start_constraints(self):
+        """Any time we see a start of a word (blank, letter, letter), it must be the start of a word"""
+        constraints = []
+        for i in range(self.size):
+            for j in range(self.size):
+                for o in [ACROSS, DOWN]:
+                    is_start = self.prev(i, j, o, 1) == self.blank
+                    is_start = z3.And(is_start, self.get(i, j) != self.blank, self.ctx)
+                    is_start = z3.And(is_start, self.next(i, j, o, 1) != self.blank, self.ctx)
+                    # possible word starts
+                    possible = [self.words[word][i][j][o] for word in self.words]
+                    constraints.append(is_start == z3.Or(*possible, self.ctx))
 
-    # Word placement determines characters on grid
-    res = []
-    for word in words:
-        word_placement_vars = []
-        for x, y in product(range(size), repeat=2):
-            # Fits horizontally
-            if x + len(word) <= size:
-                # Keep track that this is a possible placement
-                word_placement_vars.append(placement_vars[word][y][x][0])
-                possible_placements[y][x][0].append(placement_vars[word][y][x][0])
+        return constraints
+    
+    @print_time("Symmetry constraints")
+    def symmetry_constraints(self):
+        """The puzzle should be rotationally symmetric"""
+        constraints = []
+        for i in range(self.size):
+            for j in range(self.size):
+                constraints.append((self.get(i, j) == self.blank) == (self.get(self.size-1-i, self.size-1-j) == self.blank))
+        return constraints
+    
+    def generate(self, theme = [], max_blanks = -1, timeout = 60):
+        """
+        Generates a crossword puzzle with the given words and size, optimizing for the fewest blanks
+        """
+        s = z3.Solver(ctx = self.ctx)
+        # set a timeout
+        s.set("timeout", timeout * 1000)
 
-                # Effect (of this placement) on grid
-                word_symbols = grid[y][x:x + len(word)]
-                match_expr = And([chars_enc[c] == sym for c, sym in zip(word, word_symbols)])
-                res.append(Implies(placement_vars[word][y][x][0], match_expr))
+        s.add(self.position_constraints() + self.off_table_constraints() + self.island_constraints() + self.word_start_constraints() + self.symmetry_constraints())
 
-                # Word must be bounded by spaces (or grid borders)
-                bounding_chars = []
-                if x - 1 >= 0:
-                    bounding_chars.append(grid[y][x - 1])
-                if x + len(word) < size:
-                    bounding_chars.append(grid[y][x + len(word)])
-                bounded_by_spaces = And([sym == char_empty for sym in bounding_chars])
-                res.append(Implies(placement_vars[word][y][x][0], bounded_by_spaces))
+        for word in theme:
+            assert word in self.words, f"Word {word} not in word list {self.words.keys()}"
+            placements = self.words[word]
+            condition = z3.Or(*[placements[i][j][o] for i in range(self.size) for j in range(self.size) for o in [ACROSS]], self.ctx)
+            s.add(condition)
 
-            # Fits vertically (analogous to the above case)
-            if y + len(word) <= size:
-                # Keep track that this is a possible placement
-                word_placement_vars.append(placement_vars[word][y][x][1])
-                possible_placements[y][x][1].append(placement_vars[word][y][x][1])
+        if (max_blanks > 0):
+            print(f"Solving with at most {max_blanks} blanks ({100*max_blanks//(self.size*self.size)}% of table) ...", end=' ', flush=True)
+            time_before = timer()
+            s.add(z3.AtMost(*[self.get(i, j) == self.blank for i in range(self.size) for j in range(self.size)], max_blanks))
+            result = s.check()
+            print('{:.2f}s'.format(timer() - time_before))
+            if result == z3.sat:
+                print("  - succeeded")
+                self.solution = s.model()
+            else:
+                print("  - failed")
+        else:
+            lower = 0
+            upper = self.size*self.size + 1
+            mid = (lower + upper) // 2
 
-                # Effect (of this placement) on grid
-                word_symbols = [grid[y + i][x] for i in range(len(word))]
-                match_expr = And([chars_enc[c] == sym for c, sym in zip(word, word_symbols)])
-                res.append(Implies(placement_vars[word][y][x][1], match_expr))
+            while lower < upper:
+                print(f"Solving with at most {mid} blanks ({100*mid//(self.size*self.size)}% of table) ...", end=' ', flush=True)
+                time_before = timer()
 
-                # Word must be bounded by spaces (or grid borders)
-                bounding_chars = []
-                if y - 1 >= 0:
-                    bounding_chars.append(grid[y - 1][x])
-                if y + len(word) < size:
-                    bounding_chars.append(grid[y + len(word)][x])
-                bounded_by_spaces = And([sym == char_empty for sym in bounding_chars])
-                res.append(Implies(placement_vars[word][y][x][1], bounded_by_spaces))
+                s.push()
+                s.add(z3.AtMost(*[self.get(i, j) == self.blank for i in range(self.size) for j in range(self.size)], mid))
 
-        # If the word is selected, exactly one placement must be used
-        res.append(AtMost(*word_placement_vars, 1))
-        res.append(Implies(word_selection[word], Or(word_placement_vars)))
+                result = s.check()
+                print('{:.2f}s'.format(timer() - time_before))
 
-    # Every non-empty sequence (of length > 1) must match a word
-    for x, y in product(range(size), repeat=2):
-        # Start of horizontal sequence
-        if x + 1 < size:
-            seq_start = And(grid[y][x - 1] == char_empty if x - 1 >= 0 else True,
-                            grid[y][x] != char_empty,
-                            grid[y][x + 1] != char_empty)
-            res.append(seq_start == Or(possible_placements[y][x][0]))
-
-        # Start of vertical sequence (analogous to the above case)
-        if y + 1 < size:
-            seq_start = And(grid[y - 1][x] == char_empty if y - 1 >= 0 else True,
-                            grid[y][x] != char_empty,
-                            grid[y + 1][x] != char_empty)
-            res.append(seq_start == Or(possible_placements[y][x][1]))
-
-    # Add constraints on the rotational symmetry of the grid. The grid is symmetric if the empty cells are symmetric
-    for y in range(size):
-        for x in range(size):
-            res.append((grid[y][x] == char_empty) == (grid[size - 1 - y][size - 1 - x] == char_empty))
-
-    return char_empty, placement_vars, grid, res
-
-
-def interpret(model, placement_vars):
-    placement = dict()
-    for word, word_placement_vars in sorted(placement_vars.items()):
-        for y in range(len(word_placement_vars)):
-            for x in range(len(word_placement_vars[y])):
-                if is_true(model.eval(word_placement_vars[y][x][0])):
-                    placement[word] = Placement(x, y, True)
-                elif is_true(model.eval(word_placement_vars[y][x][1])):
-                    placement[word] = Placement(x, y, False)
-
-    return placement
-
-
-def wordToNumber(word, placements):
-    # create a set of all the x and y coordinates of the placements
-    coordinates = list(set([(p.x, p.y) for p in placements.values()]))
-    # sort the coordinates
-    coordinates.sort(key=lambda x: (x[1], x[0]))
-    # find the index of the placement in the sorted list
-    index = coordinates.index((placements[word].x, placements[word].y))
-    return index + 1
-
-
-def printCrossword(words_to_clues, placement, size):
-    # Write an HTML table with the crossword and clues to a file
-    with open("index.html", "w") as f:
-
-        f.write("""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>María's Crossword</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="crossword.js"></script>
-</head>
-<body>""")
-
-        f.write("<table id=\"grid\">\n")
-        for y in range(size):
-            f.write("<tr>\n")
-            for x in range(size):
-                number = ""
-                letter = " "
-                for word, p in placement.items():
-                    if p.horizontal and p.y == y and p.x <= x < p.x + len(word):
-                        letter = word[x - p.x]
-                    elif not p.horizontal and p.x == x and p.y <= y < p.y + len(word):
-                        letter = word[y - p.y]
-                    if x == p.x and y == p.y:
-                        counter = wordToNumber(word, placement)
-                        number = f"<div data-number=\"{counter}\" class=\"number\">{counter}</div>"
-                if letter == " ":
-                    f.write("<td class=\"black\"></td>")
+                if result == z3.sat:
+                    print("  - succeeded")
+                    self.solution = s.model()
+                    upper = mid
+                    mid = (lower + upper) // 2
                 else:
-                    f.write(f"<td class=\"todo\">{number}<input type=\"text\" id=\"{x}_{y}\" name=\"{letter}\" required minlength=\"1\" maxlength=\"1\" class=\"letter\"></input></td>")
-            f.write("</tr>\n")
-        f.write("</table>\n")
+                    print("  - failed")
+                    s.pop()
+                    lower = mid + 1
+                    mid = (lower + upper) // 2
+            print()
 
-        # get the horizontal and vertical words
-        horizontal_words = [word for word, p in placement.items() if p.horizontal]
-        horizontal_words.sort(key=lambda x: wordToNumber(x, placement))
-        vertical_words = [word for word, p in placement.items() if not p.horizontal]
-        vertical_words.sort(key=lambda x: wordToNumber(x, placement))
+        assert self.solution is not None, "No solution found"
 
-        # write the clues as a list
-        f.write("<div id=\"clues\">\n")
-        f.write("<h2>Across</h2>\n")
-        f.write("<ul id=\"across\">\n")
-        for word in horizontal_words:
-            num = wordToNumber(word, placement)
-            f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")
-        f.write("</ul>\n")
-        f.write("<h2>Down</h2>\n")
-        f.write("<ul id=\"down\">\n")
-        for word in vertical_words:
-            num = wordToNumber(word, placement)
-            f.write(f"<li data-number=\"{num}\">{num}. {words_to_clues[word]}</li>\n")
-        f.write("</ul>\n")
-        f.write("</div>\n")
+    def eval(self, x):
+        """Evaluates solver expression x in the context of the solution we found"""
+        out = str(self.solution.evaluate(x, model_completion=True))
+        if out == "True":
+            return True
+        elif out == "False":
+            return False
+        return out
 
-        f.write("</body>\n</html>")
+    def print_crossword(self, clues):
+        for i in range(self.size):
+            for j in range(self.size):
+                char = self.eval(self.table[i][j])
+                if char == "BLANK":
+                    print("*", end=" ")
+                else:
+                    print(char, end=" ")
+            print()
+        print()
+
+    def to_json(self, clues):
+        output = {}
+        output["size"] = self.size
+        output["table"] = [[self.eval(self.get(i, j)) for j in range(self.size)] for i in range(self.size)]
+        # get all the placements
+        across = []
+        down = []
+        for word, placements in self.words.items():
+            word = word.upper()
+            for i in range(self.size):
+                for j in range(self.size):
+                    for o in [ACROSS, DOWN]:
+                        if self.eval(placements[i][j][o]):
+                            if o == ACROSS:
+                                across.append({"word": word, "clue": clues[word], "row": i, "col": j})
+                            else:
+                                down.append({"word": word, "clue": clues[word], "row": i, "col": j})
+
+        output["words"] = {"across": across, "down": down}
+        return output
+
+@cache_call(".theme-calls.csv")
+@print_time("Generating theme words and clues with an LLM")
+def llm_generate_theme(theme, size):    
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o-mini-2024-07-18",
+        messages=[
+            {"role": "system", "content": "You are Will Shortz, the crossword puzzle editor for The New York Times, and you are excited to help me make a great crossword. "},
+            {"role": "user", "content": f"Provide {size} words and clues for a crossword puzzle with the theme \"{theme}\"."},
+        ],
+        response_format=Theme,
+    )
+
+    event = completion.choices[0].message.parsed
+    words_x_clues = {}
+    for e in event.words:
+        word = e.word.upper()
+        if word not in words_x_clues and len(word) <= size:
+            words_x_clues[word] = e.clue
+    return words_x_clues
+
+@cache_call(".clue-calls.csv")
+@print_time("Generating a clue with an LLM")
+def llm_generate_clue(word, theme):
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o-mini-2024-07-18",
+        messages=[
+            {"role": "system", "content": "You are Will Shortz, the crossword puzzle editor for The New York Times, and you are excited to help me make a great crossword. "},
+            {"role": "user", "content": f"Provide a clue for the word \"{word}\". Use the theme \"{theme}\", if you can."},
+        ],
+        response_format=Clue,
+    )
+
+    event = completion.choices[0].message.parsed
+    return event.clue
+
+# Helpers and main functions
+
+def read_theme(csv_file):
+    words_x_clues = {}
+    with open(csv_file, "r") as f:
+        reader = csv.reader(f, delimiter=";")
+        for row in reader:
+            words_x_clues[row[0].upper()] = row[1]
+    return words_x_clues
 
 
-if __name__ == '__main__':
-    # load current.csv file into words_to_clues
-    words_to_clues = {}
-    with open("current.csv", "r") as f:
-        # skip the first line
-        f.readline()
+def read_bank(txt_file, min_score, max_length):
+    words_x_clues = {}
+    with open(txt_file, "r") as f:
         for line in f:
-            word, clue = line.strip().split(";")
-            words_to_clues[word.strip().lower()] = clue.strip()
+            if line.startswith("#"):
+                continue
+            # split the line into word;score
+            word, score = line.strip().split(";")
+            if int(score) >= min_score and len(word) <= max_length:
+                words_x_clues[word.upper()] = ""
+    return words_x_clues
 
-    words = list(set(words_to_clues.keys()))
-    size = max(max(len(w) for w in words), 10)
+def json_to_html_table(json, cell_to_number):
+    doc, tag, text = Doc().tagtext()
+    with tag("table", id="grid"):
+        for i in range(len(json["table"])):
+            row = json["table"][i]
+            with tag("tr"):
+                for j in range(len(row)):
+                    cell = row[j].upper()
+                    if cell == "BLANK":
+                        with tag("td", klass="blank"):
+                            text(" ")
+                    else:
+                        with tag("td", klass="todo"):
+                            number = cell_to_number(i, j)
+                            number = "" if number < 1 else number
+                            with tag("div", klass="number", data_number=number):
+                                text(number)
+                            with tag("input", type="text", id=f"{i}_{j}", name=cell, max_length=1, min_length=1):
+                                text(" ")
+    return doc.getvalue()
 
-    placement = generateCrossword(words_to_clues, size)
+def json_to_html(json, cell_to_number):
+    doc, tag, text = Doc().tagtext()
+    doc.asis("<!DOCTYPE html>")
+    with tag("html", lang="en"):
+        with tag("head"):
+            doc.stag("meta", charset="UTF-8")
+            doc.stag("meta", name="viewport", content="width=device-width, initial-scale=1.0")
+            doc.asis("<title>María's Crossword</title>")
+            doc.stag("link", rel="stylesheet", href="crossword.css")
+            doc.asis("<script src=\"crossword.js\"></script>")
+        with tag("body"):
+            doc.asis(json_to_html_table(json, cell_to_number))
 
-    printCrossword(words_to_clues, placement, size)
+            across = [(cell_to_number(word["row"], word["col"]), word["clue"]) for word in json["words"]["across"]]
+            across.sort(key=lambda x: x[0])
+            down = [(cell_to_number(word["row"], word["col"]), word["clue"]) for word in json["words"]["down"]]
+            down.sort(key=lambda x: x[0])
+
+            with tag("div", id="clues"):
+                if across:
+                    with tag("h2"):
+                        text("Across")
+                    with tag("ul", id="across"):
+                        for (num, clue) in across:
+                            with tag("li", data_number=num):
+                                text(f"{num}. {clue}")
+                if down:
+                    with tag("h2"):
+                        text("Down")
+                    with tag("ul", id="down"):
+                        for (num, clue) in down:
+                            with tag("li", data_number=num):
+                                text(f"{num}. {clue}")
+        
+        with tag("footer"):
+            if "prompt" in json:
+                with tag("div", id="prompt"):
+                    text(f"Prompt: \"{json['prompt']}\"")
+            if "time" in json:
+                with tag("div", id="time"):
+                    text(f"Time: {json['time']:.2f} seconds")
+
+    return doc.getvalue()
+
+def pick_random_subset(words_x_clues, sample_size):
+    filtered = words_x_clues
+    selected = random.sample(list(filtered.keys()), sample_size)
+    filtered = {k: filtered[k] for k in selected}
+    return filtered
+
+def load_bank(file, score, sample, max_length = 5):
+    # non-theme words have to be 5 letters or less
+    if file.endswith(".txt"):
+        combined = pick_random_subset(read_bank(file, score, max_length), sample)
+    else:
+        combined = pick_random_subset(read_theme(file), sample)
+    return combined
+
+def generate_cell_to_number(json):
+    numbers = list(set([(word["row"], word["col"]) for word in json["words"]["across"] + json["words"]["down"]]))
+    numbers.sort()
+
+    def cell_to_number(row, col):
+        for index in range(len(numbers)):
+            if numbers[index] == (row, col):
+                return index + 1
+        return -1
+    
+    return cell_to_number
+
+def generate_json(theme, combined, size, max_blanks, timeout):
+    c = Crossword(combined.keys(), size)
+    c.generate(theme, max_blanks, timeout)
+
+    c.print_crossword(combined)
+    json = c.to_json(combined)
+
+    return json, generate_cell_to_number(json)
+
+
+def complete_clues(json, theme, theme_words_x_clues, manual):
+    for word in json["words"]["across"] + json["words"]["down"]:
+        if word["word"] in theme_words_x_clues:
+            word["clue"] = theme_words_x_clues[word["word"]]
+        elif manual:
+            clue = input(f"Provide a clue for the word \"{word['word']}\": ")
+            word["clue"] = clue
+        else:
+            word["clue"] = llm_generate_clue(word["word"], theme)
+    return json
+
+app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Generate a crossword puzzle")
+
+@app.command(short_help="Generate a crossword puzzle from words and clues")
+def manual(
+    theme: str = typer.Argument(..., help="Path to csv file containing required words and clues"),
+    bank: str = typer.Option(..., help="Path to a txt file containing a bank of optional words (crossword compiler format)"),
+    sample: int = typer.Option(500, help="Number of bank words to sample"),
+    score: int = typer.Option(50, help="Minimum score for bank words"),
+    size: int = typer.Option(-1, help="Size of the crossword puzzle"),
+    max_blanks: int = typer.Option(-1, help="Maximum number of blanks allowed in the puzzle"),
+    timeout: int = typer.Option(60, help="Timeout for the solver in seconds"),
+    output: str = typer.Option("index.html", help="Output file (.html or .json)"),
+):
+    assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
+    assert bank == None or bank.endswith(".txt"), "bank file must be txt file"
+    
+    theme_words_x_clues = read_theme(theme)
+    
+    if size == -1:
+        size = max([len(word) for word in theme_words_x_clues])
+    else:
+        for word in theme_words_x_clues:
+            assert len(word) <= size, f"Word {word} is too long for the crossword size {size}"
+
+    assert size > 0, "size must be greater than 0"
+
+    combined = load_bank(bank, score, sample)
+    combined.update(theme_words_x_clues)
+
+    out, cell_to_number = generate_json(theme_words_x_clues.keys(), combined, size, max_blanks, timeout)
+
+    theme = " ".join([f"{word}: {clue}" for word, clue in theme_words_x_clues.items()])
+    out = complete_clues(out, theme, theme_words_x_clues, True)
+
+    with open(output, "w") as f:
+        # if output ends in .html, write html, otherwise write json
+        if output.endswith(".html"):
+            f.write(json_to_html(out, cell_to_number))
+        else:
+            json.dump(out, f)
+
+@app.command(short_help="Generate a crossword puzzle from a theme description")
+def auto(
+    theme: str = typer.Argument(..., help="Description of the puzzle theme"),
+    bank: str = typer.Option(..., help="Path to a txt file containing a bank of optional words (crossword compiler format)"),
+    sample: int = typer.Option(500, help="Number of bank words to sample"),
+    score: int = typer.Option(50, help="Minimum score for bank words"),
+    size: int = typer.Option(..., help="Size of the crossword puzzle"),
+    max_blanks: int = typer.Option(-1, help="Maximum number of blanks allowed in the puzzle"),
+    timeout: int = typer.Option(60, help="Timeout for the solver in seconds"),
+    output: str = typer.Option("index.html", help="Output file (.html or .json)"),
+):
+    start_time = timer()
+
+    assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
+    assert bank.endswith(".txt"), "bank file must be txt file"
+    assert size > 0, "size must be greater than 0"
+
+    theme_words_x_clues = llm_generate_theme(theme, size)
+
+    # try every combination of theme words without bank words, from largest to smallest, until one works
+    picked = None
+    power_set = []
+    for i in range(3, min(len(theme_words_x_clues), (size // 2) + 1)):
+        power_set += combinations(theme_words_x_clues.keys(), i)
+    # sort the power set in a random order
+    random.shuffle(power_set)
+    for attempt in power_set:
+        print(f"\nTrying theme {attempt}")
+        combined = load_bank(bank, score, 0)
+        combined.update({k: theme_words_x_clues[k] for k in attempt})
+        try:
+            generate_json(attempt, combined, size, -1, 20)
+            print(f"Found one!")
+            picked = attempt
+            break
+        except AssertionError as e:
+            print(f"Assertion failed: {e}")
+            continue
+
+    if picked is None:
+        print("Failed to generate a crossword puzzle")
+        return
+
+    print(f"Generating crossword with theme {picked}")
+    combined = load_bank(bank, score, sample)
+    combined.update({k: theme_words_x_clues[k] for k in picked})
+    out, cell_to_number = generate_json(picked, combined, size, max_blanks, timeout)
+
+    out = complete_clues(out, theme, theme_words_x_clues, False)
+
+    # add the theme to the output
+    out["prompt"] = theme
+    out["time"] = timer() - start_time
+
+    with open(output, "w") as f:
+        # if output ends in .html, write html, otherwise write json
+        if output.endswith(".html"):
+            f.write(json_to_html(out, cell_to_number))
+        else:
+            json.dump(out, f)
+
+@app.command(short_help="Convert a json file to html")
+def web(
+    input: str = typer.Argument(..., help="Path to json file to convert"),
+    output: str = typer.Option("index.html", help="Output file (.html)"),
+):
+    assert input.endswith(".json"), "input file must be .json"
+    assert output.endswith(".html"), "output file must be .html"
+
+    with open(input, "r") as f:
+        out = json.load(f)
+
+    with open(output, "w") as f:
+        f.write(json_to_html(out, generate_cell_to_number(out)))
+
+if __name__ == "__main__":
+    app()

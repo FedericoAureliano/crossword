@@ -7,7 +7,13 @@
     --selected: #F04646;
     --next: #f0464653;
     --next-next: #f0464625;
+    --prev: #46a6f053;
+    --prev-prev: #46a6f025;
 
+}
+
+html {
+    min-width: 350px;
 }
 
 body {
@@ -57,7 +63,7 @@ body {
     background-color: var(--selected); 
 }
 
-#grid td.black {
+#grid td.blank {
     background-color: var(--blocked);
 }
 
@@ -109,6 +115,32 @@ h1 {
 
 #grid input.nextnext {
     background-color: var(--next-next);
+}
+
+#grid input.prev {
+    background-color: var(--prev);
+}
+
+#grid input.prevprev {
+    background-color: var(--prev-prev);
+}
+
+footer {
+    font-size: 10pt;
+    margin-top: 1em;
+    margin-bottom: 1em;
+    color: var(--outline);
+    border-top-style: dashed;
+    border-top-width: 1px;
+    padding-top: 1em;
+}
+
+footer #prompt {
+    float: left;
+}
+
+footer #time {
+    float: right;
 }
 
 @media (max-width: 500px) {
