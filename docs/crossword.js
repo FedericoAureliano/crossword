@@ -42,9 +42,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (event.key === 'Tab') {
                 gotoNext(input);
             }
-            if (event.key === 'Alt') {
-                cheat();
-            }
         });
 
         // Add event listener to highlight all text on click
@@ -68,8 +65,39 @@ document.addEventListener('DOMContentLoaded', () => {
             gotoCell(cell, clue.parentElement.id === "across");
         });
     });
+
+    // add event listener to the whole screen
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Alt') {
+            const inputs = document.querySelectorAll('input');
+            // save all the current values
+            savedValues = [];
+            inputs.forEach(input => {
+                savedValues.push(input.value);
+            });
+            // fill in all the correct values
+            inputs.forEach(input => {
+                if (input.value.trim().toUpperCase() !== input.name.trim().toUpperCase()) {
+                    input.style.color = 'var(--selected)';
+                    input.value = input.name;
+                }
+            });
+        }
+    });
+
+    document.addEventListener('keyup', (event) => {
+        if (event.key === 'Alt') {
+            const inputs = document.querySelectorAll('input');
+            inputs.forEach((input, index) => {
+                input.value = savedValues[index];
+                // remove the color
+                input.style.color = '';
+            });
+        }
+    });
 });
 
+var savedValues = [];
 
 // helpers
 
@@ -189,15 +217,6 @@ function updateDirection(current) {
         facing = true
     }
     shade(current);
-}
-
-function cheat() {
-    const inputs = document.querySelectorAll('input');
-    inputs.forEach(input => {
-        if (input.value.trim() === '') {
-            input.value = input.name;
-        }
-    });
 }
 
 function checkInputs() {

@@ -1,0 +1,4 @@
+
+ACROSS = 0
+DOWN = 1
+BLANK = "BLANK"

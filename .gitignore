@@ -1,3 +1,7 @@
 .venv
 .theme-calls.csv
 .clue-calls.csv
+nyt_crosswords.zip
+nyt_crosswords/
+dist
+__pycache__

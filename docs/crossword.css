@@ -127,8 +127,7 @@ h1 {
 
 footer {
     font-size: 10pt;
-    margin-top: 1em;
-    margin-bottom: 1em;
+    margin: 1em;
     color: var(--outline);
     border-top-style: dashed;
     border-top-width: 1px;
