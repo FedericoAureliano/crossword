@@ -134,12 +134,8 @@ footer {
     padding-top: 1em;
 }
 
-footer #prompt {
-    float: left;
-}
-
-footer #time {
-    float: right;
+footer #prompt, footer #time {
+    margin-bottom: 0.5em;
 }
 
 @media (max-width: 500px) {
