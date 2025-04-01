@@ -7,8 +7,7 @@ import datetime
 from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
-
-# Helpers and main functions
+from crossword.llm import llm_generate_theme
 
 app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Generate a crossword puzzle")
 
@@ -16,50 +15,24 @@ app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Ge
 def mini(
     bank: str = typer.Argument(..., help="Path to a tsv file with words and clues (word, clue)"),
     output: str = typer.Argument(..., help="Output file (.html or .json)"),
+    theme: str = typer.Option(..., help="Theme of the crossword puzzle"),
     timeout: int = typer.Option(60, help="Timeout for each solver call in seconds"),
 ):
     assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
     assert bank.endswith(".tsv"), "bank file must be tsv file"
+    SIZE = 5
     
     # read the bank as a csv file delimited by tabs
     with open(bank, "r") as f:
         reader = csv.reader(f, delimiter="\t")
         words_x_clues = {row[0]: row[1] for row in reader}
 
-    # build the crossword
-    crossword = GridBuilder(words_x_clues, 5).build(timeout=timeout, max_blanks=-1)
-
-    # fill in the clues with an llm
-    crossword.auto_fill_clues()
-
-    # write the crossword to the output file
-    if output.endswith(".html"):
-        with open(output, "w") as f:
-            f.write(crossword.to_html())
-    else:
-        with open(output, "w") as f:
-            json.dump(crossword.to_json(), f)
-
-
-@app.command(short_help="Generate a Friday (15x15) crossword puzzle from words and optional clues (no theme)")
-def friday(
-    bank: str = typer.Argument(..., help="Path to a tsv file with words and clues (word, clue)"),
-    output: str = typer.Argument(..., help="Output file (.html or .json)"),
-    timeout: int = typer.Option(60, help="Timeout for each solver call in seconds"),
-):
-    assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
-    assert bank.endswith(".tsv"), "bank file must be tsv file"
-    
-    # read the bank as a csv file delimited by tabs
-    with open(bank, "r") as f:
-        reader = csv.reader(f, delimiter="\t")
-        words_x_clues = {row[0]: row[1] for row in reader}
+    theme_words_x_clues = llm_generate_theme(theme, SIZE)
+    for word, clue in theme_words_x_clues.items():
+        words_x_clues[word] = clue
 
     # build the crossword
-    crossword = GridBuilder(words_x_clues, 15).build(timeout=timeout, max_blanks=-1)
-
-    # fill in the clues with an llm
-    crossword.auto_fill_clues()
+    crossword = GridBuilder(words_x_clues, SIZE).build(key_words=theme_words_x_clues.keys(), prompt=theme, timeout=timeout, max_blanks=-1)
 
     # write the crossword to the output file
     if output.endswith(".html"):
@@ -149,9 +122,13 @@ def bank(
     output: str = typer.Argument(..., help="Output file (.tsv)"),
     start: str = typer.Option("1976-01-01", help="Start date for the puzzles to include (inclusive)"),
     end: str = typer.Option("2018-03-09", help="End date for the puzzles to include (inclusive)"),
-    day: str = typer.Option("all", help="Limit to puzzles of a certain day of the week"),
+    day: str = typer.Option("all", help="Limit to puzzles of a certain day of the week (monday, tuesday, wednesday, thursday, friday, saturday, sunday, or all)"),
 ):
     assert output.endswith(".tsv"), "output file must be .tsv"
+    # check if the day is valid
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "all"]
+    day = day.lower()
+    assert day in days, f"day must be one of {days}"
     # convert the start and end dates to dates
     start_date = datetime.datetime.strptime(start, "%Y-%m-%d")
     end_date = datetime.datetime.strptime(end, "%Y-%m-%d")

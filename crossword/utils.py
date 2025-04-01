@@ -18,8 +18,11 @@ def print_time(msg):
 def cache_call(filename, post):
     def decorator(func):
         def wrapper(*args, **kwargs):
+            with open(filename, "a+"):
+                # create the file if it doesn't exist
+                pass
             with open(filename, "r+") as f:
-                cache = csv.reader(f, delimiter=";")
+                cache = csv.reader(f, delimiter="\t")
                 # find the row with the inputs
                 for row in cache:
                     old_args = list(map(str, row[:-1]))
@@ -29,7 +32,7 @@ def cache_call(filename, post):
                         f.close()
                         return post(row[-1])
                 res = func(*args, **kwargs)
-                cache = csv.writer(f, delimiter=";")
+                cache = csv.writer(f, delimiter="\t")
                 cache.writerow(list(args) + [res])
             return res
         return wrapper

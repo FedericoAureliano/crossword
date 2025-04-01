@@ -1,6 +1,4 @@
 from crossword.constants import BLANK
-from crossword.llm import llm_generate_clue
-
 from yattag import Doc
 
 class Crossword:
@@ -24,28 +22,6 @@ class Crossword:
             if words[i] == (row, col):
                 return i + 1
         return -1
-
-    def update_clues(self, words_to_clues):
-        for i in range(len(self.across)):
-            word = self.across[i][0]
-            if word in words_to_clues:
-                self.across[i] = (word, self.across[i][1], self.across[i][2], words_to_clues[word])
-        for i in range(len(self.down)):
-            word = self.down[i][0]
-            if word in words_to_clues:
-                self.down[i] = (word, self.down[i][1], self.down[i][2], words_to_clues[word])
-
-    def auto_fill_clues(self):
-        for i in range(len(self.across)):
-            word = self.across[i][0]
-            clue = self.across[i][3]
-            if not clue:
-                self.across[i] = (word, self.across[i][1], self.across[i][2], llm_generate_clue(word, self.prompt))
-        for i in range(len(self.down)):
-            word = self.down[i][0]
-            clue = self.down[i][3]
-            if not clue:
-                self.down[i] = (word, self.down[i][1], self.down[i][2], llm_generate_clue(word, self.prompt))
 
     def __str__(self):
         for i in range(self.size):

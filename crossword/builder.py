@@ -6,9 +6,13 @@ from crossword.utils import print_time
 from crossword.constants import ACROSS, DOWN, BLANK
 from crossword.crossword import Crossword
 
+from timeit import default_timer as timer
+
 class GridBuilder:
     @print_time("Setup")
     def __init__(self, words, size):
+        self.start_time = timer()
+
         self.clues = words
         words = [word for word in words if len(word) <= size]
 
@@ -144,25 +148,27 @@ class GridBuilder:
             return self.clues[word]
         return ""
 
-    def build(self, fixed_across = [], max_blanks = -1, timeout = 60):
+    def build(self, key_words = [], prompt=None, max_blanks = -1, timeout = 60):
         """
         Generates a crossword puzzle with the given words and size, optimizing for the fewest blanks
         """
+        # will essentially filter out words that are too long
+        key_words = [word for word in key_words if word in self.words]
+
         s = z3.Solver(ctx = self.ctx)
         # set a timeout
         s.set("timeout", timeout * 1000)
 
         s.add(self.position_constraints() + self.off_table_constraints() + self.checked_constraints() + self.word_start_constraints() + self.symmetry_constraints())
-
-        for word in fixed_across:
-            assert word in self.words, f"Word {word} not in word list {self.words.keys()}"
+        
+        key_word_placements = []
+        for word in key_words:
             placements = self.words[word]
-            condition = z3.Or(*[placements[i][j][o] for i in range(self.size) for j in range(self.size) for o in [ACROSS]], self.ctx)
-            s.add(condition)
+            key_word_placements += [placements[i][j][o] for i in range(self.size) for j in range(self.size) for o in [ACROSS, DOWN]]
 
         @print_time("Solving")
         def solve(msg):
-            print(msg, end="... ")
+            print(msg, end="... ", flush=True)
             result = s.check()
             if result == z3.sat:
                 print("yes", end="... ")
@@ -171,28 +177,36 @@ class GridBuilder:
                 print("not", end="... ")
             return None
 
-        if (max_blanks > 0):
-            model = solve(f"with at most {max_blanks} blanks")
+        number_of_blanks = [max_blanks]
+        if max_blanks < 0:
+            number_of_blanks = list(range(self.size*self.size + 1))
+        number_of_key_words = list(range(len(key_words) + 1))
+
+        # create the product of the number of blanks and the number of key words
+        search_space = [(k, b) for k in number_of_key_words for b in number_of_blanks]
+        # we want the most key words and the least blanks
+        search_space.sort(key=lambda x: (x[0], -x[1]), reverse=True)
+
+        lower_index = 0
+        upper_index = len(search_space) - 1
+        mid_index = len(search_space) // 2
+
+        while lower_index < upper_index:
+            s.push()
+            mid_key_words = search_space[mid_index][0]
+            mid_blanks = search_space[mid_index][1]
+            s.add(z3.AtMost(*[self.get(i, j) == self.blank for i in range(self.size) for j in range(self.size)], mid_blanks))
+            s.add(z3.AtLeast(*key_word_placements, mid_key_words))
+            model = solve(f"with at least {mid_key_words} theme words and at most {mid_blanks} blanks")
             if model is not None:
                 self.solution = model
-        else:
-            lower = 0
-            upper = self.size*self.size + 1
-            mid = (lower + upper) // 2
-
-            while lower < upper:
-                s.push()
-                s.add(z3.AtMost(*[self.get(i, j) == self.blank for i in range(self.size) for j in range(self.size)], mid))
-                model = solve(f"with at most {mid} blanks")
-                if model is not None:
-                    self.solution = model
-                    upper = mid
-                    mid = (lower + upper) // 2
-                else:
-                    s.pop()
-                    lower = mid + 1
-                    mid = (lower + upper) // 2
-            print()
+                upper_index = mid_index
+                mid_index = (lower_index + upper_index) // 2
+            else:
+                s.pop()
+                lower_index = mid_index + 1
+                mid_index = (lower_index + upper_index) // 2
+        print()
 
         assert self.solution is not None, "No solution found"
 
@@ -200,7 +214,7 @@ class GridBuilder:
         across = [(word, i, j, self.get_clue(word)) for word, placements in self.words.items() for i in range(self.size) for j in range(self.size) if self.eval(placements[i][j][ACROSS])]
         down = [(word, i, j, self.get_clue(word)) for word, placements in self.words.items() for i in range(self.size) for j in range(self.size) if self.eval(placements[i][j][DOWN])]
 
-        return Crossword(grid, across, down)
+        return Crossword(grid, across, down, prompt=prompt, time=timer() - self.start_time)
 
     def eval(self, x):
         """Evaluates solver expression x in the context of the solution we found"""

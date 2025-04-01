@@ -1,6 +1,5 @@
 .venv
-.theme-calls.csv
-.clue-calls.csv
+.*-cache.tsv
 nyt_crosswords.zip
 nyt_crosswords/
 dist
