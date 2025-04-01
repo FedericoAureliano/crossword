@@ -149,6 +149,7 @@ def bank(
     output: str = typer.Argument(..., help="Output file (.tsv)"),
     start: str = typer.Option("1976-01-01", help="Start date for the puzzles to include (inclusive)"),
     end: str = typer.Option("2018-03-09", help="End date for the puzzles to include (inclusive)"),
+    day: str = typer.Option("all", help="Limit to puzzles of a certain day of the week"),
 ):
     assert output.endswith(".tsv"), "output file must be .tsv"
     # convert the start and end dates to dates
@@ -177,12 +178,13 @@ def bank(
             for month in os.listdir(f"nyt_crosswords/{year}"):
                 if not os.listdir(f"nyt_crosswords/{year}/{month}"):
                     continue
-                for day in os.listdir(f"nyt_crosswords/{year}/{month}"):
-                    date = f"{year}-{month}-{day}"[:-5] # remove the .json extension
+                for given_day in os.listdir(f"nyt_crosswords/{year}/{month}"):
+                    date = f"{year}-{month}-{given_day}"[:-5] # remove the .json extension
                     date = datetime.datetime.strptime(date, "%Y-%m-%d")
-                    if start_date <= date <= end_date:
+                    day_of_week = date.strftime("%A").lower()
+                    if start_date <= date <= end_date and (day == "all" or day_of_week == day):
                         # open the json file to get the words and clues
-                        with open(f"nyt_crosswords/{year}/{month}/{day}", "r") as f2:
+                        with open(f"nyt_crosswords/{year}/{month}/{given_day}", "r") as f2:
                             data = json.load(f2)
                             across_words = data["answers"]["across"]
                             down_words = data["answers"]["down"]
