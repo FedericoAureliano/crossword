@@ -3,11 +3,35 @@ import csv
 import json
 import typer
 import datetime
+import gdown
 
 from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
 from crossword.llm import llm_generate_theme
+
+
+def download_nyt():
+    # if the nyt folder does not exist
+    if not os.path.exists('nyt_crosswords'):
+        print("nyt_crosswords folder does not exist")
+        # if the zip has not been downloaded, download it
+        if not os.path.exists('nyt_crosswords.zip'):
+            print("download the zip")
+            os.system('wget https://github.com/doshea/nyt_crosswords/archive/refs/heads/master.zip')
+            # move thh zip to the correct location
+            os.system('mv master.zip nyt_crosswords.zip')
+        # if the zip has been downloaded, unzip it
+        if os.path.exists('nyt_crosswords.zip'):
+            print("unzip the zip")
+            os.system('unzip nyt_crosswords.zip')
+
+def download_spreadthewordlist():
+    # if the spreadthewordlist file does not exist
+    if not os.path.exists('spreadthewordlist.dict'):
+        print("spreadthewordlist.dict file does not exist")
+        gdown.download('https://drive.google.com/uc?export=download&id=1G5nzDnXiNkSk2Za2M19n0g8QXxv7mDV5')
+
 
 app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Generate a crossword puzzle")
 
@@ -42,21 +66,6 @@ def mini(
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)
 
-
-def download_nyt():
-    # if the nyt folder does not exist
-    if not os.path.exists('nyt_crosswords'):
-        print("nyt_crosswords folder does not exist")
-        # if the zip has not been downloaded, download it
-        if not os.path.exists('nyt_crosswords.zip'):
-            print("download the zip")
-            os.system('wget https://github.com/doshea/nyt_crosswords/archive/refs/heads/master.zip')
-            # move thh zip to the correct location
-            os.system('mv master.zip nyt_crosswords.zip')
-        # if the zip has been downloaded, unzip it
-        if os.path.exists('nyt_crosswords.zip'):
-            print("unzip the zip")
-            os.system('unzip nyt_crosswords.zip')
 
 @app.command(short_help="Recreate a crossword puzzle from the nyt_crosswords repo")
 def recreate(
@@ -123,6 +132,7 @@ def bank(
     start: str = typer.Option("1976-01-01", help="Start date for the puzzles to include (inclusive)"),
     end: str = typer.Option("2018-03-09", help="End date for the puzzles to include (inclusive)"),
     day: str = typer.Option("all", help="Limit to puzzles of a certain day of the week (monday, tuesday, wednesday, thursday, friday, saturday, sunday, or all)"),
+    quality: int = typer.Option(50, help="Quality of the answers to include based on spread the wordlist"),
 ):
     assert output.endswith(".tsv"), "output file must be .tsv"
     # check if the day is valid
@@ -134,6 +144,13 @@ def bank(
     end_date = datetime.datetime.strptime(end, "%Y-%m-%d")
 
     download_nyt()
+
+    if quality > 0:
+        download_spreadthewordlist()
+        # parse "spreadthewordlist.dict" as a csv into a dictionary
+        with open("spreadthewordlist.dict", "r") as f:
+            reader = csv.reader(f, delimiter=";")
+            word_quality = {row[0]: int(row[1]) for row in reader}
 
     def clean_clue(clue):
         clue = clue[clue.find(".")+2:]
@@ -169,9 +186,15 @@ def bank(
                             down_clues = data["clues"]["down"]
                             # write the words and clues to the output file
                             for i, word in enumerate(across_words):
+                                if quality > 0 and (word.lower() not in word_quality or word_quality[word.lower()] < quality):
+                                    print(f"Removing {word} due to quality")
+                                    continue
                                 clue = clean_clue(across_clues[i])
                                 writer.writerow([word, clue])
                             for i, word in enumerate(down_words):
+                                if quality > 0 and (word.lower() not in word_quality or word_quality[word.lower()] < quality):
+                                    print(f"Removing {word} due to quality")
+                                    continue
                                 clue = clean_clue(down_clues[i])
                                 writer.writerow([word, clue])
 
