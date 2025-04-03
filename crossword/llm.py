@@ -24,7 +24,7 @@ def llm_generate_theme(theme, size):
         model="gpt-4o-mini-2024-07-18",
         messages=[
             {"role": "system", "content": f"You are the greatest crossword constructor in the world and you love \"{theme}\"."},
-            {"role": "user", "content": f"Give me clues and answers for a crossword puzzle with the theme \"{theme}\". Pick answers that are 3 to {size} characters long. Give me at least {size*2} clues and answers. Make sure the clues are clever and not too easy. Do not include the answers in the clues. Do not include the length of the answers in the clues."},
+            {"role": "user", "content": f"Give me clues and answers for a crossword puzzle with the theme \"{theme}\". Pick answers that are 3 to {size} characters long. Give me at least {size*4} clues and answers. Make sure the clues are clever and not too easy. Do not include the answers in the clues. Do not include the length of the answers in the clues."},
         ],
         response_format=Theme,
     )
