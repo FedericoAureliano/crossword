@@ -203,9 +203,9 @@ class GridBuilder:
                 upper_index = mid_index
                 mid_index = (lower_index + upper_index) // 2
             else:
-                s.pop()
                 lower_index = mid_index + 1
                 mid_index = (lower_index + upper_index) // 2
+            s.pop()
         print()
 
         assert self.solution is not None, "No solution found"

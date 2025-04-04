@@ -35,28 +35,29 @@ def download_spreadthewordlist():
 
 app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Generate a crossword puzzle")
 
-@app.command(short_help="Generate a mini (5x5) crossword puzzle from words and optional clues")
-def mini(
+@app.command(short_help="Generate a crossword puzzle from a bank of words and clues with an optional theme")
+def construct(
     bank: str = typer.Argument(..., help="Path to a tsv file with words and clues (word, clue)"),
     output: str = typer.Argument(..., help="Output file (.html or .json)"),
     theme: str = typer.Option(..., help="Theme of the crossword puzzle"),
     timeout: int = typer.Option(60, help="Timeout for each solver call in seconds"),
+    size: int = typer.Option(5, help="Size of the crossword puzzle (number of rows and columns)"),
+    max_blanks: int = typer.Option(-1, help="Maximum number of blanks in the crossword puzzle (-1 for minimization)"),
 ):
     assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
     assert bank.endswith(".tsv"), "bank file must be tsv file"
-    SIZE = 5
     
     # read the bank as a csv file delimited by tabs
     with open(bank, "r") as f:
         reader = csv.reader(f, delimiter="\t")
         words_x_clues = {row[0]: row[1] for row in reader}
 
-    theme_words_x_clues = llm_generate_theme(theme, SIZE)
+    theme_words_x_clues = llm_generate_theme(theme, size)
     for word, clue in theme_words_x_clues.items():
         words_x_clues[word] = clue
 
     # build the crossword
-    crossword = GridBuilder(words_x_clues, SIZE).build(key_words=theme_words_x_clues.keys(), prompt=theme, timeout=timeout, max_blanks=-1)
+    crossword = GridBuilder(words_x_clues, size).build(key_words=theme_words_x_clues.keys(), prompt=theme, timeout=timeout, max_blanks=max_blanks)
 
     # write the crossword to the output file
     if output.endswith(".html"):
