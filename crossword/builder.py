@@ -188,7 +188,7 @@ class GridBuilder:
         search_space.sort(key=lambda x: (x[0], -x[1]), reverse=True)
 
         lower_index = 0
-        upper_index = len(search_space) - 1
+        upper_index = len(search_space)
         mid_index = len(search_space) // 2
 
         while lower_index < upper_index:
@@ -196,7 +196,8 @@ class GridBuilder:
             mid_key_words = search_space[mid_index][0]
             mid_blanks = search_space[mid_index][1]
             s.add(z3.AtMost(*[self.get(i, j) == self.blank for i in range(self.size) for j in range(self.size)], mid_blanks))
-            s.add(z3.AtLeast(*key_word_placements, mid_key_words))
+            if mid_key_words > 0:
+                s.add(z3.AtLeast(*key_word_placements, mid_key_words))
             model = solve(f"with at least {mid_key_words} theme words and at most {mid_blanks} blanks")
             if model is not None:
                 self.solution = model

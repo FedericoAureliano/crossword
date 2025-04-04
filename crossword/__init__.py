@@ -38,13 +38,15 @@ app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Ge
 @app.command(short_help="Generate a crossword puzzle from a bank of words and clues with an optional theme")
 def construct(
     bank: str = typer.Argument(..., help="Path to a tsv file with words and clues (word, clue)"),
-    output: str = typer.Argument(..., help="Output file (.html or .json)"),
-    theme: str = typer.Option(..., help="Theme of the crossword puzzle"),
+    output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
+    theme: str = typer.Option(None, help="Theme of the crossword puzzle"),
     timeout: int = typer.Option(60, help="Timeout for each solver call in seconds"),
     size: int = typer.Option(5, help="Size of the crossword puzzle (number of rows and columns)"),
     max_blanks: int = typer.Option(-1, help="Maximum number of blanks in the crossword puzzle (-1 for minimization)"),
 ):
-    assert output.endswith(".html") or output.endswith(".json"), "output file must be .html or .json"
+    assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
+    assert size > 0, "size must be greater than 0"
+    assert max_blanks >= -1, "max_blanks must be greater than or equal to -1"
     assert bank.endswith(".tsv"), "bank file must be tsv file"
     
     # read the bank as a csv file delimited by tabs
@@ -52,7 +54,11 @@ def construct(
         reader = csv.reader(f, delimiter="\t")
         words_x_clues = {row[0]: row[1] for row in reader}
 
-    theme_words_x_clues = llm_generate_theme(theme, size)
+    if theme is not None:
+        theme_words_x_clues = llm_generate_theme(theme, size)
+    else:
+        theme_words_x_clues = {}
+
     for word, clue in theme_words_x_clues.items():
         words_x_clues[word] = clue
 
@@ -63,6 +69,9 @@ def construct(
     if output.endswith(".html"):
         with open(output, "w") as f:
             f.write(crossword.to_html())
+    elif output.endswith(".md"):
+        with open(output, "w") as f:
+            f.write(crossword.to_markdown())
     else:
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)

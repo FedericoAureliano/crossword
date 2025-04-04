@@ -111,3 +111,48 @@ class Crossword:
                             text(f"Time: {self.time:.2f} seconds")
 
         return doc.getvalue()
+    
+    def to_markdown(self):
+        out = "---\n"
+        out += f"size: \"{self.size}\"\n"
+        if self.prompt:
+            out += f"prompt: \"{self.prompt}\"\n"
+        if self.time:
+            out += f"time: \"{self.time:.2f} seconds\"\n"
+        out += "---\n"
+        out += "# Crossword\n"
+        out += "## Grid\n"
+        out += "|"
+        for _ in range(self.size):
+            out += " |"
+        out += "\n"
+        out += "|"
+        for _ in range(self.size):
+            out += "-|"
+        out += "\n"
+        for i in range(self.size):
+            out += "|"
+            for j in range(self.size):
+                char = self.grid[i][j].upper()
+                if char == BLANK:
+                    out += "*|"
+                else:
+                    out += char + "|"
+            out += "\n"
+        out += "\n"
+        out += "## Clues\n"
+
+        across = [(self.cell_to_number(row, col), clue) for _, row, col, clue in self.across]
+        across.sort(key=lambda x: x[0])
+        down = [(self.cell_to_number(row, col), clue) for _, row, col, clue in self.down]
+        down.sort(key=lambda x: x[0])
+
+        out += "### Across\n"
+        for (num, clue) in across:
+            out += f"{num}. {clue}\n"
+        out += "\n"
+        out += "### Down\n"
+        for (num, clue) in down:
+            out += f"{num}. {clue}\n"
+        out += "\n"
+        return out
