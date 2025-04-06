@@ -8,7 +8,7 @@ import gdown
 from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
-from crossword.llm import llm_generate_theme
+from crossword.llm import llm_generate_theme, llm_generate_crossword
 from crossword.parser import parse_markdown, parse_json
 
 def download_nyt():
@@ -86,6 +86,76 @@ def construct(
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)
 
+
+@app.command(short_help="Ask an LLM to generate a crossword puzzle with a theme")
+def auto(
+    output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
+    theme: str = typer.Option(None, help="Theme of the crossword puzzle"),
+    size: int = typer.Option(5, help="Size of the crossword puzzle (number of rows and columns)"),
+):
+    assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
+    assert size > 0, "size must be greater than 0"
+
+    # generate the crossword
+    llm_crossword = llm_generate_crossword(theme, size)
+    grid = llm_crossword["grid"]
+    clues = llm_crossword["clues"]
+
+    def get(i, j):
+        if i < 0 or i >= size or j < 0 or j >= size:
+            return BLANK
+        return grid[i][j]
+    
+    def next(i, j, orientation, k):
+        if orientation == "ACROSS":
+            return get(i, j+k)
+        else:
+            return get(i+k, j)
+        
+    def prev(i, j, orientation, k):
+        if orientation == "ACROSS":
+            return get(i, j-k)
+        else:
+            return get(i-k, j)
+
+    # find the starting positions of every word in the grid
+    across = []
+    down = []
+    for i in range(size):
+        for j in range(size):
+            # if the previous cell is blank and the current cell is not blank, it is the start of a word
+            if prev(i, j, "ACROSS", 1) == BLANK and get(i, j) != BLANK:
+                # find the end of the word
+                k = 1
+                while next(i, j, "ACROSS", k) != BLANK:
+                    k += 1
+                # add the word to the list of across words
+                word = "".join([get(i, j+l) for l in range(k)])
+                clue = clues[word] if word in clues else ""
+                across.append((word, i, j, clue))
+            # if the previous cell is blank and the current cell is not blank, it is the start of a word
+            if prev(i, j, "DOWN", 1) == BLANK and get(i, j) != BLANK:
+                # find the end of the word
+                k = 1
+                while next(i, j, "DOWN", k) != BLANK:
+                    k += 1
+                # add the word to the list of down words
+                word = "".join([get(i+l, j) for l in range(k)])
+                clue = clues[word] if word in clues else ""
+                down.append((word, i, j, clue))
+
+    crossword = Crossword(grid, across, down, check=False)
+
+    # write the crossword to the output file
+    if output.endswith(".html"):
+        with open(output, "w") as f:
+            f.write(crossword.to_html())
+    elif output.endswith(".md"):
+        with open(output, "w") as f:
+            f.write(crossword.to_markdown())
+    else:
+        with open(output, "w") as f:
+            json.dump(crossword.to_json(), f)
 
 @app.command(short_help="Recreate a crossword puzzle from the nyt_crosswords or nyt-mini-crosswords repos")
 def recreate(
