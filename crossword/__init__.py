@@ -9,8 +9,7 @@ from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
 from crossword.llm import llm_generate_theme
-from crossword.parser import parse_markdown
-
+from crossword.parser import parse_markdown, parse_json
 
 def download_nyt():
     # if the nyt folder does not exist
@@ -26,6 +25,15 @@ def download_nyt():
         if os.path.exists('nyt_crosswords.zip'):
             print("unzip the zip")
             os.system('unzip nyt_crosswords.zip')
+
+def download_nyt_mini():
+    # if the chris nunes file does not exist
+    if not os.path.exists('nyt_mini.json'):
+        print("nyt_mini.json file does not exist")
+        # download the file with wdget
+        os.system('wget https://raw.githubusercontent.com/chrisnunes57/nyt-mini-crosswords/refs/heads/main/data.json')
+        # move the file to the correct location
+        os.system('mv data.json nyt_mini.json')
 
 def download_spreadthewordlist():
     # if the spreadthewordlist file does not exist
@@ -78,58 +86,86 @@ def construct(
             json.dump(crossword.to_json(), f)
 
 
-@app.command(short_help="Recreate a crossword puzzle from the nyt_crosswords repo")
+@app.command(short_help="Recreate a crossword puzzle from the nyt_crosswords or nyt-mini-crosswords repos")
 def recreate(
     date: str = typer.Argument(..., help="Date of the puzzle in the format YYYY-MM-DD"),
+    repo: str = typer.Option("nyt_crosswords", help="Repository to use (nyt_crosswords or nyt-mini-crosswords)"),
     output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
 ):
     assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
+    assert repo in ["nyt_crosswords", "nyt-mini-crosswords"], "repo must be nyt_crosswords or nyt-mini-crosswords"
+    assert date.count("-") == 2, "date must be in the format YYYY-MM-DD"
 
-    download_nyt()
     date = datetime.datetime.strptime(date, "%Y-%m-%d")
     year = date.strftime("%Y")
     month = date.strftime("%m")
     day = date.strftime("%d")
-    with open(f"nyt_crosswords/{year}/{month}/{day}.json", "r") as f:
-        data = json.load(f)
 
-        rows = data["size"]["rows"]
-        cols = data["size"]["cols"]
-        gridnums = data["gridnums"]
-        def num_to_cell(num):
-            # find the index of the num in gridnums
-            index = gridnums.index(num)
-            # convert the index to a row and col
-            # (row * cols) + col = index
-            col = index % cols
-            row = (index - col)//cols
-            return (row, col)
+    if repo == "nyt-mini-crosswords":
+        download_nyt_mini()
+        with open("nyt_mini.json", "r") as f:
+            data = json.load(f)
+            # find the date in the data
+            for puzzle in data:
+                if puzzle["print_date"] == date.strftime("%Y-%m-%d"):
+                    board = puzzle["board"]["cells"]
+                    assert len(board) == 25, "board must be 5x5"
+                    # convert the board to a grid
+                    grid = []
+                    for i in range(5):
+                        grid.append([])
+                        for j in range(5):
+                            if "guess" in board[i * 5 + j]:
+                                grid[i].append(board[i * 5 + j]["guess"])
+                            else:
+                                grid[i].append(BLANK)
+                    across = []
+                    down = []
+                    break
+            else:
+                raise ValueError(f"No puzzle found for {date.strftime('%Y-%m-%d')}")
+    else:
+        download_nyt()
+        with open(f"nyt_crosswords/{year}/{month}/{day}.json", "r") as f:
+            data = json.load(f)
+            rows = data["size"]["rows"]
+            cols = data["size"]["cols"]
+            gridnums = data["gridnums"]
+            def num_to_cell(num):
+                # find the index of the num in gridnums
+                index = gridnums.index(num)
+                # convert the index to a row and col
+                # (row * cols) + col = index
+                col = index % cols
+                row = (index - col)//cols
+                return (row, col)
 
-        flat_grid = data["grid"]
-        grid = [[flat_grid[(row*cols)+col] if flat_grid[(row*cols)+col] != "." else BLANK for col in range(cols)] for row in range(rows)]
+            flat_grid = data["grid"]
+            grid = [[flat_grid[(row*cols)+col] if flat_grid[(row*cols)+col] != "." else BLANK for col in range(cols)] for row in range(rows)]
 
-        across_words = data["answers"]["across"]
-        across_clues = data["clues"]["across"]
-        across_positions = []
-        for i in range(len(across_clues)):
-            dot = across_clues[i].find(".")
-            number = int(across_clues[i][:dot])
-            across_clues[i] = across_clues[i][dot+2:]
-            across_positions.append(num_to_cell(number))
+            across_words = data["answers"]["across"]
+            across_clues = data["clues"]["across"]
+            across_positions = []
+            for i in range(len(across_clues)):
+                dot = across_clues[i].find(".")
+                number = int(across_clues[i][:dot])
+                across_clues[i] = across_clues[i][dot+2:]
+                across_positions.append(num_to_cell(number))
 
-        down_words = data["answers"]["down"]
-        down_clues = data["clues"]["down"]
-        down_positions = []
-        for i in range(len(down_clues)):
-            dot = down_clues[i].find(".")
-            number = int(down_clues[i][:dot])
-            down_clues[i] = down_clues[i][dot+2:]
-            down_positions.append(num_to_cell(number))
+            down_words = data["answers"]["down"]
+            down_clues = data["clues"]["down"]
+            down_positions = []
+            for i in range(len(down_clues)):
+                dot = down_clues[i].find(".")
+                number = int(down_clues[i][:dot])
+                down_clues[i] = down_clues[i][dot+2:]
+                down_positions.append(num_to_cell(number))
 
-        across = [(word, pos[0], pos[1], clue) for (word, pos, clue) in zip(across_words, across_positions, across_clues)]
-        down = [(word, pos[0], pos[1], clue) for (word, pos, clue) in zip(down_words, down_positions, down_clues)]
+            across = [(word, pos[0], pos[1], clue) for (word, pos, clue) in zip(across_words, across_positions, across_clues)]
+            down = [(word, pos[0], pos[1], clue) for (word, pos, clue) in zip(down_words, down_positions, down_clues)]
     
-    crossword = Crossword(grid, across, down)
+    crossword = Crossword(grid, across, down, check=False)
+
     if output.endswith(".html"):
         with open(output, "w") as f:
             f.write(crossword.to_html())
@@ -217,18 +253,24 @@ def bank(
 
 @app.command(short_help="Translate a crossword file")
 def translate(
-    input: str = typer.Argument(..., help="Path to a markdown crossword file"),
+    input: str = typer.Argument(..., help="Path to a crossword file (.json or .md)"),
     output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
 ):
     assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
-    assert input.endswith(".md"), "input file must be .md"
+    assert input.endswith(".md") or input.endswith(".json"), "input file must be .md or .json"
 
-    # read the markdown file
-    with open(input, "r") as f:
-        contents = f.read()
-
-    # parse the markdown file
-    crossword = parse_markdown(contents)
+    if input.endswith(".md"):
+        # read the markdown file
+        with open(input, "r") as f:
+            contents = f.read()
+        # parse the markdown file
+        crossword = parse_markdown(contents, check=False)
+    elif input.endswith(".json"):
+        # read the json file
+        with open(input, "r") as f:
+            contents = f.read()
+        # parse the json file
+        crossword = parse_json(contents, check=False)
 
     # write the crossword to the output file
     if output.endswith(".html"):

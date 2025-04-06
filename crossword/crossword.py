@@ -2,7 +2,7 @@ from crossword.constants import BLANK
 from yattag import Doc
 
 class Crossword:
-    def __init__(self, grid, across, down, prompt=None, time=None):
+    def __init__(self, grid, across, down, prompt=None, time=None, check=True):
         self.grid = grid # 2D array of letters and BLANK
         assert len(grid) == len(grid[0])
         self.size = len(grid)
@@ -14,9 +14,12 @@ class Crossword:
         self.prompt = prompt
         self.time = time
 
-        self.check_position_constraints()
-        self.check_checked_constraints()
-        self.check_symmetry_constraints()
+        print(self)
+
+        if check:
+            self.check_position_constraints()
+            self.check_checked_constraints()
+            self.check_symmetry_constraints()
 
     def cell_to_number(self, row, col):
         # get all the rows and columns of the words
@@ -26,17 +29,6 @@ class Crossword:
             if words[i] == (row, col):
                 return i + 1
         return -1
-
-    def __str__(self):
-        for i in range(self.size):
-            for j in range(self.size):
-                char = self.eval(self.grid[i][j])
-                if char == BLANK:
-                    print("*", end=" ")
-                else:
-                    print(char, end=" ")
-            print()
-        print()
 
     def check_position_constraints(self):
         """
@@ -204,3 +196,5 @@ class Crossword:
             out += f"({row}, {col}): {clue}\n"
         out += "\n"
         return out
+    
+    __str__ = to_markdown

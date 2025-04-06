@@ -1,7 +1,9 @@
+import json
+
 from crossword.constants import BLANK
 from crossword.crossword import Crossword
 
-def parse_markdown(markdown):
+def parse_markdown(markdown, check=True):
     """
     Parse a markdown string into a crossword grid. For example,
     
@@ -34,30 +36,7 @@ def parse_markdown(markdown):
     (1, 1): Uproar
     (2, 0): Alex and ___ (jewelry retailer)
     
-    Should be parsed as
-    self.grid = [
-        ["*", "*", "R", "H", "O"],
-        ["*", "R", "E", "I", "N"],
-        ["A", "I", "S", "L", "E"],
-        ["N", "O", "E", "L", "*"],
-        ["I", "T", "T", "*", "*"]
-    ]
-    self.clues = {
-        "across": {
-            (0, 2): "Greek 'r'",
-            (1, 1): "Free ___ (total control)",
-            (2, 0): "Choice plane seating",
-            (3, 0): "Yule tune",
-            (4, 0): "Cousin ___ (Addams Family member)"
-        },
-        "down": {
-            (0, 2): "Bowling alley button",
-            (0, 3): "What Jack and Jill went up",
-            (0, 4): "Word repeated in 'It takes ___ to know ___'",
-            (1, 1): "Uproar",
-            (2, 0): "Alex and ___ (jewelry retailer)"
-        }
-    }
+    into a Crossword object.
     """
     lines = markdown.strip().split("\n")
     grid = []
@@ -97,7 +76,7 @@ def parse_markdown(markdown):
                 across.append((word, row, col, clue))
 
     # Create a Crossword object and return it
-    return Crossword(grid, across, down)
+    return Crossword(grid, across, down, check=check)
 
 
 def find_word(grid, row, col, direction):
@@ -116,3 +95,135 @@ def find_word(grid, row, col, direction):
                 break
             word += grid[i][col]
     return word
+
+
+def parse_json(json_string, check=True):
+    """
+    Parse a json string like 
+
+    {
+        "size": 5,
+        "table": [
+            [
+                "BLANK",
+                "BLANK",
+                "R",
+                "H",
+                "O"
+            ],
+            [
+                "BLANK",
+                "R",
+                "E",
+                "I",
+                "N"
+            ],
+            [
+                "A",
+                "I",
+                "S",
+                "L",
+                "E"
+            ],
+            [
+                "N",
+                "O",
+                "E",
+                "L",
+                "BLANK"
+            ],
+            [
+                "I",
+                "T",
+                "T",
+                "BLANK",
+                "BLANK"
+            ]
+        ],
+        "words": {
+            "across": [
+                {
+                    "word": "RHO",
+                    "row": 0,
+                    "col": 2,
+                    "clue": "Greek \"r\""
+                },
+                {
+                    "word": "REIN",
+                    "row": 1,
+                    "col": 1,
+                    "clue": "Free ___ (total control)"
+                },
+                {
+                    "word": "AISLE",
+                    "row": 2,
+                    "col": 0,
+                    "clue": "Choice plane seating"
+                },
+                {
+                    "word": "NOEL",
+                    "row": 3,
+                    "col": 0,
+                    "clue": "Yule tune"
+                },
+                {
+                    "word": "ITT",
+                    "row": 4,
+                    "col": 0,
+                    "clue": "Cousin ___ (Addams Family member)"
+                }
+            ],
+            "down": [
+                {
+                    "word": "ANI",
+                    "row": 2,
+                    "col": 0,
+                    "clue": "Alex and ___ (jewelry retailer)"
+                },
+                {
+                    "word": "RIOT",
+                    "row": 1,
+                    "col": 1,
+                    "clue": "Uproar"
+                },
+                {
+                    "word": "RESET",
+                    "row": 0,
+                    "col": 2,
+                    "clue": "Bowling alley button"
+                },
+                {
+                    "word": "HILL",
+                    "row": 0,
+                    "col": 3,
+                    "clue": "What Jack and Jill went up"
+                },
+                {
+                    "word": "ONE",
+                    "row": 0,
+                    "col": 4,
+                    "clue": "Word repeated in \"It takes ___ to know ___\""
+                }
+            ]
+        },
+        "time": 0.34075580805074424
+    }
+
+    into a Crossword object.
+    """
+    data = json.loads(json_string)
+    grid = data["table"]
+    across = []
+    down = []
+    for word in data["words"]["across"]:
+        across.append((word["word"], word["row"], word["col"], word["clue"]))
+    for word in data["words"]["down"]:
+        down.append((word["word"], word["row"], word["col"], word["clue"]))
+    time = data.get("time", None)
+    prompt = data.get("prompt", None)
+    # Convert BLANK to the BLANK constant
+    for i in range(len(grid)):
+        for j in range(len(grid[i])):
+            if grid[i][j] == "BLANK":
+                grid[i][j] = BLANK
+    return Crossword(grid, across, down, time=time, prompt=prompt, check=check)
