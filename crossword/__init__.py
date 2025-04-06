@@ -44,7 +44,7 @@ def download_spreadthewordlist():
 
 app = typer.Typer(pretty_exceptions_enable=False, add_completion=False, help="Generate a crossword puzzle")
 
-@app.command(short_help="Generate a crossword puzzle from a bank of words and clues with an optional theme")
+@app.command(short_help="Generate a crossword puzzle from a bank of words and clues with an optional theme (LLM generates some of the words and clues based on the theme)")
 def construct(
     bank: str = typer.Argument(..., help="Path to a tsv file with words and clues (word, clue)"),
     output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
