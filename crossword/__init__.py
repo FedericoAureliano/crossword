@@ -52,6 +52,7 @@ def construct(
     timeout: int = typer.Option(60, help="Timeout for each solver call in seconds"),
     size: int = typer.Option(5, help="Size of the crossword puzzle (number of rows and columns)"),
     max_blanks: int = typer.Option(-1, help="Maximum number of blanks in the crossword puzzle (-1 for minimization)"),
+    symmetry: bool = typer.Option(True, help="Whether to force the crossword puzzle to be rotationally symmetry or not"),
 ):
     assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
     assert size > 0, "size must be greater than 0"
@@ -72,7 +73,7 @@ def construct(
         words_x_clues[word] = clue
 
     # build the crossword
-    crossword = GridBuilder(words_x_clues, size).build(key_words=theme_words_x_clues.keys(), prompt=theme, timeout=timeout, max_blanks=max_blanks)
+    crossword = GridBuilder(words_x_clues, size).build(key_words=theme_words_x_clues.keys(), prompt=theme, timeout=timeout, max_blanks=max_blanks, symmetry=symmetry)
 
     # write the crossword to the output file
     if output.endswith(".html"):

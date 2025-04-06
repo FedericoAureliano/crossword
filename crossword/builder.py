@@ -148,7 +148,7 @@ class GridBuilder:
             return self.clues[word]
         return ""
 
-    def build(self, key_words = [], prompt=None, max_blanks = -1, timeout = 60):
+    def build(self, key_words = [], prompt=None, max_blanks = -1, timeout = 60, symmetry = True):
         """
         Generates a crossword puzzle with the given words and size, optimizing for the fewest blanks
         """
@@ -159,7 +159,9 @@ class GridBuilder:
         # set a timeout
         s.set("timeout", timeout * 1000)
 
-        s.add(self.position_constraints() + self.off_table_constraints() + self.checked_constraints() + self.word_start_constraints() + self.symmetry_constraints())
+        s.add(self.position_constraints() + self.off_table_constraints() + self.checked_constraints() + self.word_start_constraints())
+        if symmetry:
+            s.add(self.symmetry_constraints())
         
         key_word_placements = []
         for word in key_words:
