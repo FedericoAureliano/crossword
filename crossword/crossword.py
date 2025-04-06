@@ -14,6 +14,10 @@ class Crossword:
         self.prompt = prompt
         self.time = time
 
+        self.check_position_constraints()
+        self.check_checked_constraints()
+        self.check_symmetry_constraints()
+
     def cell_to_number(self, row, col):
         # get all the rows and columns of the words
         words = list(set([(x, y) for (_, x, y, _) in self.across] + [(x, y) for (_, x, y, _) in self.down]))
@@ -33,6 +37,50 @@ class Crossword:
                     print(char, end=" ")
             print()
         print()
+
+    def check_position_constraints(self):
+        """
+        If a word is selected, it must be placed in the grid.
+        """
+        checklist = set()
+        for position in self.across:
+            word, row, col, _ = position
+            for i in range(len(word)):
+                checklist.add((row, col + i))
+                assert self.grid[row][col + i] == word[i], f"Word {word} is not placed correctly at ({row}, {col})"
+        for position in self.down:
+            word, row, col, _ = position
+            for i in range(len(word)):
+                checklist.add((row + i, col))
+                assert self.grid[row + i][col] == word[i], f"Word {word} is not placed correctly at ({row}, {col})"
+        
+        # every position that has not been added to the checklist must be blank
+        for i in range(self.size):
+            for j in range(self.size):
+                if (i, j) not in checklist:
+                    assert self.grid[i][j] == BLANK, f"Position ({i}, {j}) is not blank" 
+
+    def check_checked_constraints(self):
+        """
+        Every letter belongs to an across and a down word.
+        """
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.grid[i][j] != BLANK:
+                    left_neighbor = self.grid[i][j-1] if j > 0 else BLANK
+                    right_neighbor = self.grid[i][j+1] if j < self.size - 1 else BLANK
+                    up_neighbor = self.grid[i-1][j] if i > 0 else BLANK
+                    down_neighbor = self.grid[i+1][j] if i < self.size - 1 else BLANK
+                    assert (left_neighbor != BLANK or right_neighbor != BLANK), f"Letter {self.grid[i][j]} at ({i}, {j}) is not part of an across word"
+                    assert (up_neighbor != BLANK or down_neighbor != BLANK), f"Letter {self.grid[i][j]} at ({i}, {j}) is not part of a down word"
+
+    def check_symmetry_constraints(self):
+        """
+        The crossword is symmetric in terms of the BLANKs
+        """
+        for i in range(self.size):
+            for j in range(self.size):
+                assert (self.grid[i][j] == BLANK) == (self.grid[self.size - i - 1][self.size - j - 1] == BLANK), f"Grid is not symmetric at ({i}, {j})"
 
     def to_json(self):
         output = {}
@@ -142,17 +190,17 @@ class Crossword:
         out += "\n"
         out += "## Clues\n"
 
-        across = [(self.cell_to_number(row, col), clue) for _, row, col, clue in self.across]
+        across = [(self.cell_to_number(row, col), row, col, clue) for _, row, col, clue in self.across]
         across.sort(key=lambda x: x[0])
-        down = [(self.cell_to_number(row, col), clue) for _, row, col, clue in self.down]
+        down = [(self.cell_to_number(row, col), row, col, clue) for _, row, col, clue in self.down]
         down.sort(key=lambda x: x[0])
 
         out += "### Across\n"
-        for (num, clue) in across:
-            out += f"{num}. {clue}\n"
+        for (_, row, col, clue) in across:
+            out += f"({row}, {col}): {clue}\n"
         out += "\n"
         out += "### Down\n"
-        for (num, clue) in down:
-            out += f"{num}. {clue}\n"
+        for (_, row, col, clue) in down:
+            out += f"({row}, {col}): {clue}\n"
         out += "\n"
         return out

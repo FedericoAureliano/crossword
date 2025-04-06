@@ -9,6 +9,7 @@ from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
 from crossword.llm import llm_generate_theme
+from crossword.parser import parse_markdown
 
 
 def download_nyt():
@@ -207,6 +208,33 @@ def bank(
                                     continue
                                 clue = clean_clue(down_clues[i])
                                 writer.writerow([word, clue])
+
+
+@app.command(short_help="Translate a crossword file")
+def translate(
+    input: str = typer.Argument(..., help="Path to a markdown crossword file"),
+    output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
+):
+    assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
+    assert input.endswith(".md"), "input file must be .md"
+
+    # read the markdown file
+    with open(input, "r") as f:
+        contents = f.read()
+
+    # parse the markdown file
+    crossword = parse_markdown(contents)
+
+    # write the crossword to the output file
+    if output.endswith(".html"):
+        with open(output, "w") as f:
+            f.write(crossword.to_html())
+    elif output.endswith(".md"):
+        with open(output, "w") as f:
+            f.write(crossword.to_markdown())
+    else:
+        with open(output, "w") as f:
+            json.dump(crossword.to_json(), f)
 
 if __name__ == "__main__":
     app()
