@@ -81,8 +81,10 @@ def construct(
 @app.command(short_help="Recreate a crossword puzzle from the nyt_crosswords repo")
 def recreate(
     date: str = typer.Argument(..., help="Date of the puzzle in the format YYYY-MM-DD"),
-    output: str = typer.Argument(..., help="Output file (.html or .json)"),
+    output: str = typer.Argument(..., help="Output file (.html, .json, or .md)"),
 ):
+    assert output.endswith(".html") or output.endswith(".json") or output.endswith(".md"), "output file must be .html, .json, or .md"
+
     download_nyt()
     date = datetime.datetime.strptime(date, "%Y-%m-%d")
     year = date.strftime("%Y")
@@ -131,6 +133,9 @@ def recreate(
     if output.endswith(".html"):
         with open(output, "w") as f:
             f.write(crossword.to_html())
+    elif output.endswith(".md"):
+        with open(output, "w") as f:
+            f.write(crossword.to_markdown())
     else:
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)
