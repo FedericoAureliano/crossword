@@ -144,7 +144,7 @@ def auto(
                 clue = clues[word] if word in clues else ""
                 down.append((word, i, j, clue))
 
-    crossword = Crossword(grid, across, down, check=False)
+    crossword = Crossword(grid, across, down, check=False, prompt=theme)
 
     # write the crossword to the output file
     if output.endswith(".html"):
