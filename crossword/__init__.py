@@ -9,7 +9,7 @@ import math
 from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
-from crossword.gemini import prepare_finetuning_data, prepare_prompt_minis
+from crossword.gemini import prepare_finetuning_data, prepare_prompt_minis, run_finetuning_job, sample_from_finetuned_model
 from crossword.llm import llm_generate_theme, llm_generate_crossword
 from crossword.parser import parse_markdown, parse_json, find_word
 
@@ -373,8 +373,19 @@ def translate(
             json.dump(crossword.to_json(), f)
 
 @app.command(short_help="Finetune on mini data")
-def finetune():
-    prepare_finetuning_data("minis/", prepare_prompt_minis, "minis_markdown")
+def finetune(
+    input: str = typer.Argument(..., help="Path to a directory of crossword markdown files"),
+    gcs_filename: str = typer.Option("minis_markdown", help="Name of GCS blob within bucket to save to"),
+):
+    finetune_uri = prepare_finetuning_data(input, prepare_prompt_minis, gcs_filename)
+    run_finetuning_job(finetune_uri)
+
+@app.command(short_help="Sample from a finetuned model")
+def samplefinetuned(
+    input: str = typer.Argument(..., help="Path to a FineTuningJob on Vertex AI"),
+    size: str = typer.Option("5", help="Size of the crossword puzzle (number of rows and columns)"),
+):
+    sample_from_finetuned_model(input, size)
 
 if __name__ == "__main__":
     app()

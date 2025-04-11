@@ -6,7 +6,7 @@ authors = [
     {name = "Federico Mora",email = "fmorarocha@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "yattag (>=1.16.1,<2.0.0)",
     "typer (>=0.15.2,<0.16.0)",

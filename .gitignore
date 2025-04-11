@@ -6,4 +6,5 @@ spreadthewordlist.dict
 nyt_mini.json
 bank.tsv
 dist
+crossword/secrets.py
 __pycache__

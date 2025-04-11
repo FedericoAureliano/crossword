@@ -1,5 +1,8 @@
 import csv
+import os
+import subprocess
 
+from datetime import date, timedelta
 from timeit import default_timer as timer
 from typing import List
 
@@ -81,3 +84,20 @@ def reject_impossible_themes(words: List[str], size: int) -> bool:
         return False
     
     return True
+
+def pull_mini_data(out_directory_path: str, num_examples: int=None):
+    """
+    Pulls mini data using the provided bash command into the specified directory.
+    If num_examples is None, it will pull all examples.
+    """
+    # if the directory does not exist, create it
+    if not os.path.exists(out_directory_path):
+        os.makedirs(out_directory_path)
+    # run 
+    mini_data_start = date(2019, 1, 2)
+    mini_data_end = date(2021, 3, 7)
+    delta = timedelta(days=1)
+    while mini_data_start <= mini_data_end:
+        subprocess.run(f'crossword recreate {mini_data_start.strftime("%Y-%m-%d")} {out_directory_path}/mini{mini_data_start.strftime("%Y%m%d")}.md --repo nyt-mini-crosswords', shell=True)
+        mini_data_start += delta
+    print(f"All mini data pulled into {out_directory_path}")
