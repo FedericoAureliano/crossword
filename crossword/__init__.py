@@ -4,10 +4,12 @@ import json
 import typer
 import datetime
 import gdown
+import math
 
 from crossword.builder import GridBuilder
 from crossword.crossword import Crossword
 from crossword.constants import BLANK
+from crossword.gemini import prepare_finetuning_data, prepare_prompt_minis
 from crossword.llm import llm_generate_theme, llm_generate_crossword
 from crossword.parser import parse_markdown, parse_json
 
@@ -180,14 +182,15 @@ def recreate(
             for puzzle in data:
                 if puzzle["print_date"] == date.strftime("%Y-%m-%d"):
                     board = puzzle["board"]["cells"]
-                    assert len(board) == 25, "board must be 5x5"
+                    #assert len(board) == 25, "board must be 5x5"
+                    size = int(math.sqrt(len(board)))
                     # convert the board to a grid
                     grid = []
-                    for i in range(5):
+                    for i in range(size):
                         grid.append([])
-                        for j in range(5):
-                            if "guess" in board[i * 5 + j]:
-                                grid[i].append(board[i * 5 + j]["guess"])
+                        for j in range(size):
+                            if "guess" in board[i * size + j]:
+                                grid[i].append(board[i * size + j]["guess"])
                             else:
                                 grid[i].append(BLANK)
                     across = []
@@ -353,6 +356,10 @@ def translate(
     else:
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)
+
+@app.command(short_help="Finetune on mini data")
+def finetune():
+    prepare_finetuning_data("minis/", prepare_prompt_minis, "minis_markdown")
 
 if __name__ == "__main__":
     app()

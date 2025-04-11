@@ -151,6 +151,28 @@ class Crossword:
                             text(f"Time: {self.time:.2f} seconds")
 
         return doc.getvalue()
+
+    def get_markdown_table(self):
+        out = ""
+        out += "|"
+        for _ in range(self.size):
+            out += " |"
+        out += "\n"
+        out += "|"
+        for _ in range(self.size):
+            out += "-|"
+        out += "\n"
+        for i in range(self.size):
+            out += "|"
+            for j in range(self.size):
+                char = self.grid[i][j].upper()
+                if char == BLANK:
+                    out += "*|"
+                else:
+                    out += char + "|"
+            out += "\n"
+        out += "\n"
+        return out
     
     def to_markdown(self):
         out = "---\n"
