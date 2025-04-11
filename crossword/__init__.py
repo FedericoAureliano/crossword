@@ -11,7 +11,7 @@ from crossword.crossword import Crossword
 from crossword.constants import BLANK
 from crossword.gemini import prepare_finetuning_data, prepare_prompt_minis
 from crossword.llm import llm_generate_theme, llm_generate_crossword
-from crossword.parser import parse_markdown, parse_json
+from crossword.parser import parse_markdown, parse_json, find_word
 
 def download_nyt():
     # if the nyt folder does not exist
@@ -193,8 +193,23 @@ def recreate(
                                 grid[i].append(board[i * size + j]["guess"])
                             else:
                                 grid[i].append(BLANK)
+                    # get all the words from the grid
                     across = []
                     down = []
+                    for i in range(5):
+                        for j in range(5):
+                            if grid[i][j] != BLANK and j == 0:
+                                across_word = find_word(grid, i, j, "across")
+                                across.append((across_word, i, j, ""))
+                            elif grid[i][j] != BLANK and grid[i][j - 1] == BLANK:
+                                across_word = find_word(grid, i, j, "across")
+                                across.append((across_word, i, j, ""))
+                            if grid[i][j] != BLANK and i == 0:
+                                down_word = find_word(grid, i, j, "down")
+                                down.append((down_word, i, j, ""))
+                            elif grid[i][j] != BLANK and grid[i - 1][j] == BLANK:
+                                down_word = find_word(grid, i, j, "down")
+                                down.append((down_word, i, j, ""))
                     break
             else:
                 raise ValueError(f"No puzzle found for {date.strftime('%Y-%m-%d')}")
@@ -245,7 +260,7 @@ def recreate(
             f.write(crossword.to_html())
     elif output.endswith(".md"):
         with open(output, "w") as f:
-            f.write(crossword.to_markdown())
+            f.write(crossword.to_markdown(words_instead_of_clues=(repo == "nyt-mini-crosswords")))
     else:
         with open(output, "w") as f:
             json.dump(crossword.to_json(), f)
