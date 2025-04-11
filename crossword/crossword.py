@@ -14,8 +14,6 @@ class Crossword:
         self.prompt = prompt
         self.time = time
 
-        print(self)
-
         if check:
             self.check_position_constraints()
             self.check_checked_constraints()
@@ -152,7 +150,7 @@ class Crossword:
 
         return doc.getvalue()
     
-    def to_markdown(self):
+    def to_markdown(self, words_instead_of_clues = False):
         out = "---\n"
         out += f"size: \"{self.size}\"\n"
         if self.prompt:
@@ -182,18 +180,20 @@ class Crossword:
         out += "\n"
         out += "## Clues\n"
 
-        across = [(self.cell_to_number(row, col), row, col, clue) for _, row, col, clue in self.across]
+        across = [(self.cell_to_number(row, col), word, row, col, clue) for word, row, col, clue in self.across]
         across.sort(key=lambda x: x[0])
-        down = [(self.cell_to_number(row, col), row, col, clue) for _, row, col, clue in self.down]
+        down = [(self.cell_to_number(row, col), word, row, col, clue) for word, row, col, clue in self.down]
         down.sort(key=lambda x: x[0])
 
         out += "### Across\n"
-        for (_, row, col, clue) in across:
-            out += f"({row}, {col}): {clue}\n"
+        for (_, word, row, col, clue) in across:
+            last = word if words_instead_of_clues else clue
+            out += f"({row}, {col}): {last}\n"
         out += "\n"
         out += "### Down\n"
-        for (_, row, col, clue) in down:
-            out += f"({row}, {col}): {clue}\n"
+        for (_, word, row, col, clue) in down:
+            last = word if words_instead_of_clues else clue
+            out += f"({row}, {col}): {last}\n"
         out += "\n"
         return out
     
