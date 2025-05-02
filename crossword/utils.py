@@ -85,19 +85,34 @@ def reject_impossible_themes(words: List[str], size: int) -> bool:
     
     return True
 
-def pull_mini_data(out_directory_path: str, num_examples: int=None):
+def pull_crossword_data(out_directory_path: str, num_examples: int=None, mini=False):
     """
-    Pulls mini data using the provided bash command into the specified directory.
+    Pulls NYT crossword data using the provided bash command into the specified directory.
     If num_examples is None, it will pull all examples.
+    If mini is 
     """
     # if the directory does not exist, create it
     if not os.path.exists(out_directory_path):
         os.makedirs(out_directory_path)
-    # run 
-    mini_data_start = date(2019, 1, 2)
-    mini_data_end = date(2021, 3, 7)
+    if mini:
+        data_start = date(2019, 1, 2)
+        data_end = date(2021, 3, 7)
+    else:
+        data_start = date(1977, 1, 1)
+        data_end = date(2017, 12, 3)
     delta = timedelta(days=1)
-    while mini_data_start <= mini_data_end:
-        subprocess.run(f'crossword recreate {mini_data_start.strftime("%Y-%m-%d")} {out_directory_path}/mini{mini_data_start.strftime("%Y%m%d")}.md --repo nyt-mini-crosswords', shell=True)
-        mini_data_start += delta
-    print(f"All mini data pulled into {out_directory_path}")
+    succ_count = 0
+    
+    while data_start <= data_end:
+        if mini:
+            result = subprocess.run(f'crossword recreate {data_start.strftime("%Y-%m-%d")} {out_directory_path}/mini{data_start.strftime("%Y%m%d")}.md --repo nyt-mini-crosswords', shell=True)
+        else:
+            result = subprocess.run(f'crossword recreate {data_start.strftime("%Y-%m-%d")} {out_directory_path}/nyt{data_start.strftime("%Y%m%d")}.md', shell=True)
+        data_start += delta
+        if result.returncode == 0:
+            # correctly pulled down so increment
+            succ_count += 1
+        if num_examples is not None:
+            if succ_count == num_examples:
+                break
+    print(f"All data pulled into {out_directory_path}")

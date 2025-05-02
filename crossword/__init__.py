@@ -215,7 +215,7 @@ def recreate(
                 raise ValueError(f"No puzzle found for {date.strftime('%Y-%m-%d')}")
     else:
         download_nyt()
-        with open(f"nyt_crosswords/{year}/{month}/{day}.json", "r") as f:
+        with open(f"nyt_crosswords-master/{year}/{month}/{day}.json", "r") as f:
             data = json.load(f)
             rows = data["size"]["rows"]
             cols = data["size"]["cols"]
